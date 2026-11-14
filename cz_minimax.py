@@ -310,8 +310,12 @@ def build_transformer(state_dict, compute_dtype=torch.bfloat16):
     return model
 
 
-def load_transformer(path, compute_dtype=torch.bfloat16):
+def load_transformer(path, compute_dtype=torch.bfloat16, precision=None, single_file=None,
+                     token=None):
+    """`path`: the GGUF file. Called by the app as load_transformer(repo, dtype, precision,
+    single_file=path): the file wins over the repo, which only lends the configs."""
     t0 = time.time()
+    path = single_file or path
     if not str(path).lower().endswith(".gguf"):
         raise ValueError("only GGUF transformers are handled for now")
     sd, meta = read_gguf(path)
@@ -344,7 +348,8 @@ def _text_encoder_config(repo=OFFICIAL_REPO):
     return cfg
 
 
-def load_text_encoder(path, compute_dtype=torch.bfloat16, repo=OFFICIAL_REPO):
+def load_text_encoder(path, compute_dtype=torch.bfloat16, precision=None, token=None,
+                      config_repo=None, repo=OFFICIAL_REPO):
     """Qwen3VLForConditionalGeneration with 50 decoder layers and no final norm, so that
     `hidden_states[50]` is the output of the 50th layer, the state the DiT reads. The
     language-model head is dropped (never used)."""
@@ -352,6 +357,7 @@ def load_text_encoder(path, compute_dtype=torch.bfloat16, repo=OFFICIAL_REPO):
     from transformers import Qwen3VLForConditionalGeneration
 
     t0 = time.time()
+    repo = config_repo or repo
     sd, _ = read_gguf(path)
     cfg = _text_encoder_config(repo)
     with init_empty_weights():
@@ -383,48 +389,781 @@ def load_text_encoder(path, compute_dtype=torch.bfloat16, repo=OFFICIAL_REPO):
 
 
 # --------------------------------------------------------------------------------------
-# The pipeline
+# What the rest of the app reads from the engine module
 # --------------------------------------------------------------------------------------
-def load_vae(repo=OFFICIAL_REPO, dtype=torch.bfloat16):
-    from diffusers import AutoencoderKLMiniMaxH3Image
-    return AutoencoderKLMiniMaxH3Image.from_pretrained(repo, subfolder="vae_diffusers", torch_dtype=dtype).eval()
+DEFAULT_REPO = OFFICIAL_REPO      # configs, tokenizer, processor, scheduler and VAE
+BASE_REPO = OFFICIAL_REPO
+ENGINE_REPOS = (OFFICIAL_REPO,)
+FAMILY = "minimax"
+MODEL_LABEL = "MiniMax-H3-Image"
+DEFAULTS = {"minimax": {"steps": PDD_STEPS, "guidance": 1.0, "size": 2048}}
+# One way to hold the weights for now: GGUF, quantized on the card.
+PRECISIONS = ("gguf",)
+HIDDEN_SIZE = 5120                # the text encoder's width (what a replacement must match)
+SCHEDULE_PEAK = 1.0               # no CFG: the guidance is baked into the weights
+NEGATIVE_PRESET = ""              # no negative prompt on this model
+# Under this much VRAM the text encoder and the DiT take the card in turn.
+AUTO_NONE_MIN_VRAM_GB = 46
+
+GRID = 32                         # 16x VAE, 2x2 patches
+MIN_SIDE, MAX_SIDE = 256, 6272
+MAX_PIXELS = 20 * 1024 * 1024     # the release card's working range ends around 20 Mpx
+SMALL_PIXELS = 1024 * 1024        # under this the model is far from its 4 to 16 Mpx range
+EDIT_MAX_REFS = 16
+INPAINT_WITH_REFERENCE = True     # an inpaint also hands the source to the model as <Picture 1>
+
+# The files fetched when none is set and none is found in ./checkpoints.
+DEFAULT_TRANSFORMER = ("unsloth/MiniMax-H3-Image-GGUF", "minimax_h3_image_pruned-UD-Q5_K_XL.gguf")
+DEFAULT_TEXT_ENCODER = ("unsloth/MiniMax-H3-GGUF", "qwen3vl_32b_minimax_h3-Q4_K_M.gguf")
+
+LICENCE_NOTE = ("MiniMax-H3-Image Community License: rights are granted worldwide EXCEPT in the "
+                "European Union, the United Kingdom, the Republic of Korea and the United States "
+                "(separate authorization: https://platform.minimax.io/license). You are "
+                "responsible for checking that you may use the model where you are.")
+
+_TEXT_ENCODER_MARKERS = ("model.layers.0.self_attn.q_proj.weight", "model.embed_tokens.weight")
 
 
-def load_pipeline(transformer_path, text_encoder_path, device="cuda", repo=OFFICIAL_REPO,
-                  compute_dtype=torch.bfloat16, vae_dtype=torch.bfloat16, offload=True):
-    """The official block chain with the GGUF components. With `offload`, the text encoder,
-    the transformer and the VAE take the GPU in turn (accelerate hooks: a model goes back
-    to RAM when the next one is called)."""
-    from diffusers import MiniMaxH3Scheduler
-    from diffusers.modular_pipelines.minimax_h3_image import MiniMaxH3ImageBlocks
-    from transformers import AutoTokenizer, Qwen3VLProcessor
-
-    blocks = MiniMaxH3ImageBlocks()
-    mp = blocks.init_pipeline(repo)
-    tokenizer = AutoTokenizer.from_pretrained(repo, subfolder="tokenizer")
-    processor = Qwen3VLProcessor.from_pretrained(repo, subfolder="processor")
-    scheduler = MiniMaxH3Scheduler.from_pretrained(repo, subfolder="scheduler")
-    text_encoder = load_text_encoder(text_encoder_path, compute_dtype, repo)
-    transformer = load_transformer(transformer_path, compute_dtype)
-    vae = load_vae(repo, vae_dtype)
-    mp.update_components(text_encoder=text_encoder, tokenizer=tokenizer, processor=processor,
-                         scheduler=scheduler, transformer=transformer, vae=vae)
-    hooks = []
-    if offload:
-        from accelerate import cpu_offload_with_hook
-        hook = None
-        for model in (text_encoder, transformer, vae):
-            _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)
-            hooks.append(hook)
-    else:
-        for model in (text_encoder, transformer, vae):
-            model.to(device)
-    return mp, hooks
+def gguf_tensor_names(path):
+    """The tensor names of a GGUF file (header only, the data is not read)."""
+    import gguf
+    return [t.name for t in gguf.GGUFReader(path).tensors]
 
 
-def offload_all(hooks):
-    for h in hooks or []:
+def family_from_keys(keys):
+    """'minimax' for a MiniMax-H3-Image transformer file, else what the family markers of
+    the other crispz engines say (so that their files are refused by name)."""
+    keys = set(keys or ())
+    if "final_layer.video_out.weight" in keys and "video_patch_proj.weight" in keys \
+            and not any(k.startswith("audio_patch_proj") for k in keys):
+        return FAMILY
+    try:
+        import cz_flux3
+        return cz_flux3.family_from_keys(keys)
+    except Exception:
+        return None
+
+
+def family_from_header(hdr):
+    return family_from_keys(list((hdr or {}).keys()))
+
+
+def is_engine_repo(repo):
+    """True for the official repo or a local folder laid out like it."""
+    r = str(repo or "").strip().rstrip("/\\")
+    if r in ENGINE_REPOS:
+        return True
+    try:
+        idx = os.path.join(r, "modular_model_index.json")
+        if os.path.isfile(idx):
+            with open(idx, encoding="utf-8") as f:
+                return "MiniMaxH3Image" in str(json.load(f).get("_class_name", ""))
+    except Exception:
+        pass
+    return False
+
+
+def is_base_repo(repo):
+    return False          # one checkpoint, distilled; there is no undistilled "base"
+
+
+def variant_of(repo):
+    return FAMILY
+
+
+def variant_from_keys(keys):
+    return None
+
+
+def _bfl_quant_of(path):
+    return None
+
+
+def is_text_encoder_file(path):
+    """True when `path` is a GGUF of the Qwen3-VL-32B encoder with transformers names."""
+    try:
+        if not str(path).lower().endswith(".gguf"):
+            return False
+        names = set(gguf_tensor_names(path))
+        return all(m in names for m in _TEXT_ENCODER_MARKERS)
+    except Exception:
+        return False
+
+
+def single_file_refusal(path):
+    """Why this file cannot be the transformer, or None when it can."""
+    name = os.path.basename(str(path))
+    if not str(path).lower().endswith(".gguf"):
+        return (f"{name}: only GGUF transformers are loaded for now (safetensors fp8, int8 "
+                f"ConvRot and nvfp4 are not). Take a GGUF of the same model, for instance from "
+                f"{DEFAULT_TRANSFORMER[0]}.")
+    try:
+        names = set(gguf_tensor_names(path))
+    except Exception as e:
+        return f"{name}: unreadable GGUF ({type(e).__name__}: {e})"
+    if all(m in names for m in _TEXT_ENCODER_MARKERS):
+        return f"{name} is a text encoder, not a transformer: choose it in Text encoder."
+    if "final_layer.video_out.weight" not in names:
+        return f"{name}: not a MiniMax-H3-Image transformer."
+    if "adaln_t_table" not in names:
+        return (f"{name}: this is the dense release layout, only the pruned (curve form) "
+                f"files are handled.")
+    if any(n.startswith("audio_patch_proj") for n in names):
+        return f"{name}: this is the MiniMax-H3 VIDEO model, not MiniMax-H3-Image."
+    return None
+
+
+def edit_ref_max_edge():
+    return 2048           # the pipeline's own rule (reference_max_short_edge), not a setting
+
+
+def fit_size(width, height):
+    """The size the model runs: multiples of 32, sides within bounds, 20 Mpx at most."""
+    w, h = int(width or DEFAULTS[FAMILY]["size"]), int(height or DEFAULTS[FAMILY]["size"])
+    if w * h > MAX_PIXELS:
+        k = (MAX_PIXELS / float(w * h)) ** 0.5
+        w, h = int(w * k), int(h * k)
+    w = min(max(int(round(w / GRID)) * GRID, MIN_SIDE), MAX_SIDE)
+    h = min(max(int(round(h / GRID)) * GRID, MIN_SIDE), MAX_SIDE)
+    return w, h
+
+
+def prepare_prompt(prompt, width=None, height=None, fit=False, place=None):
+    """No layout language on this model: the prompt and the size go through unchanged."""
+    return prompt, width, height, None
+
+
+def strength_to_start(strength):
+    """Which step of the fixed 6-step grid an img2img of this strength starts at. The grid
+    cannot be re-cut (one output head per step), so the strength snaps to the nearest of
+    its sigmas: 1.0, 0.97, 0.89, 0.75, 0.53, 0.23."""
+    s = 1.0 if strength is None else float(min(max(float(strength), 0.0), 1.0))
+    return min(range(PDD_STEPS), key=lambda k: abs(PDD_SIGMAS[k] - s))
+
+
+def _find_local(kind):
+    """A file of this kind ('transformer' / 'text_encoder') under ./checkpoints, else None."""
+    root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "checkpoints")
+    found = []
+    for base, _dirs, files in os.walk(root):
+        for f in files:
+            if f.lower().endswith(".gguf"):
+                found.append(os.path.join(base, f))
+    for path in sorted(found):
         try:
-            h.offload()
+            if kind == "text_encoder":
+                if is_text_encoder_file(path):
+                    return path
+            elif single_file_refusal(path) is None:
+                return path
+        except Exception:
+            continue
+    return None
+
+
+def default_file(kind, token=None):
+    """The file to load when none is set: one found in ./checkpoints, else the default
+    downloaded into the Hugging Face cache (said in the log, with the licence note)."""
+    path = _find_local(kind)
+    if path:
+        return path
+    from huggingface_hub import hf_hub_download
+    repo, name = DEFAULT_TEXT_ENCODER if kind == "text_encoder" else DEFAULT_TRANSFORMER
+    _log(f"no {kind.replace('_', ' ')} file set or found in ./checkpoints: fetching {repo}/{name} "
+         f"into the Hugging Face cache (15 to 18 GB)")
+    _log(LICENCE_NOTE)
+    return hf_hub_download(repo, name, token=token)
+
+
+# --------------------------------------------------------------------------------------
+# The block chains
+# --------------------------------------------------------------------------------------
+def _make_step_hook():
+    from diffusers.modular_pipelines.modular_pipeline import ModularPipelineBlocks
+
+    class CrispzStepHook(ModularPipelineBlocks):
+        model_name = "minimax-h3-image"
+
+        @property
+        def description(self):
+            return "crispz: per-step hook (inpaint blending, preview callback, interrupt)."
+
+        @property
+        def inputs(self):
+            return []
+
+        @property
+        def intermediate_outputs(self):
+            return []
+
+        @torch.no_grad()
+        def __call__(self, components, block_state, i, t):
+            owner = getattr(self, "owner", None)
+            if owner is not None:
+                owner._on_step(block_state, i, t)
+            return components, block_state
+
+    return CrispzStepHook()
+
+
+def _make_start_block():
+    """After `set_timesteps`: drops the first steps of the plan when the call starts from an
+    image (img2img / inpaint). The transformer is told the offset so that each remaining
+    step still uses ITS output head."""
+    from diffusers.modular_pipelines.modular_pipeline import ModularPipelineBlocks
+    from diffusers.modular_pipelines.modular_pipeline_utils import InputParam, OutputParam
+
+    class CrispzStart(ModularPipelineBlocks):
+        model_name = "minimax-h3-image"
+
+        @property
+        def description(self):
+            return "crispz: start the fixed schedule at a later step (img2img / inpaint)."
+
+        @property
+        def inputs(self):
+            return [InputParam(name="timesteps", required=True),
+                    InputParam(name="row_timestep_plan", required=True)]
+
+        @property
+        def intermediate_outputs(self):
+            return [OutputParam("timesteps"), OutputParam("row_timestep_plan")]
+
+        @torch.no_grad()
+        def __call__(self, components, state):
+            owner = getattr(self, "owner", None)
+            k = int(getattr(owner, "_start", 0) or 0) if owner is not None else 0
+            if k:
+                bs = self.get_block_state(state)
+                bs.timesteps = bs.timesteps[k:]
+                bs.row_timestep_plan = list(bs.row_timestep_plan)[k:]
+                self.set_block_state(state, bs)
+            return components, state
+
+    return CrispzStart()
+
+
+def _walk(blocks, fn):
+    subs = getattr(blocks, "sub_blocks", None)
+    if not subs:
+        return
+    fn(blocks, subs)
+    for child in list(subs.values()):
+        _walk(child, fn)
+
+
+def build_blocks():
+    """(main chain, text chain, crispz blocks). The main chain is the official one minus
+    the text encoder (crispz encodes and caches the conditioning itself, so that the 18 GB
+    encoder leaves the card before anything else happens), plus the two crispz blocks.
+    The text chain is the official reference resize + text encoder."""
+    from diffusers.modular_pipelines import SequentialPipelineBlocks
+    from diffusers.modular_pipelines.minimax_h3_image import MiniMaxH3ImageBlocks
+    from diffusers.modular_pipelines.modular_pipeline import LoopSequentialPipelineBlocks
+
+    main = MiniMaxH3ImageBlocks()
+    text = SequentialPipelineBlocks.from_blocks_dict({
+        "before_encode": main.sub_blocks["before_encode"].__class__(),
+        "text_encoder": main.sub_blocks["text_encoder"].__class__(),
+    })
+    main.sub_blocks.pop("text_encoder")
+    crispz = []
+
+    def patch(block, subs):
+        if isinstance(block, LoopSequentialPipelineBlocks):
+            if "crispz_hook" not in subs:
+                hook = _make_step_hook()
+                subs.insert("crispz_hook", hook, len(subs))
+                crispz.append(hook)
+        elif "set_timesteps" in subs and "crispz_start" not in subs:
+            start = _make_start_block()
+            subs.insert("crispz_start", start, list(subs.keys()).index("set_timesteps") + 1)
+            crispz.append(start)
+    _walk(main, patch)
+    return main, text, crispz
+
+
+def _offset_forward(transformer):
+    """Makes `transformer.forward` add `transformer._cz_pdd_offset` to the step index it is
+    given (the loop counts from 0 even when the schedule starts later)."""
+    import functools
+    if getattr(transformer, "_cz_offset_installed", False):
+        return
+    inner = transformer.forward
+
+    @functools.wraps(inner)
+    def forward(*args, **kwargs):
+        if "pdd_step_index" in kwargs:
+            kwargs["pdd_step_index"] = int(kwargs["pdd_step_index"]) + int(
+                getattr(transformer, "_cz_pdd_offset", 0) or 0)
+        return inner(*args, **kwargs)
+    transformer.forward = forward
+    transformer._cz_pdd_offset = 0
+    transformer._cz_offset_installed = True
+
+
+class _Interrupted(Exception):
+    """Raised by the step hook when `_interrupt` is set: unwinds the modular loop."""
+
+
+def _quiet_interrupt(active):
+    """The modular loop logs an error when a block raises: silenced for our own stop."""
+    try:
+        import cz_flux3
+        if active is None:
+            cz_flux3._install_quiet_interrupt()
+        else:
+            cz_flux3._QuietInterrupt.active = bool(active)
+    except Exception:
+        pass
+
+
+# --------------------------------------------------------------------------------------
+# The adapter the app calls
+# --------------------------------------------------------------------------------------
+class MiniMaxPipe:
+    """A DiffusionPipeline-shaped face on the modular MiniMax-H3-Image chain, with the call
+    convention the crispz engines share:
+
+      pipe(prompt=..., width=..., height=..., generator=..., callback_on_step_end=cb)
+      pipe(prompt=..., image=[refs])                      edit with references (native)
+      pipe(prompt=..., image=init, strength=0.5)          img2img (emulated)
+      pipe(prompt=..., image=init, mask_image=m, ...)     inpaint (emulated)
+
+    Fixed by the model, whatever is asked: 6 steps, no CFG, no negative prompt (each said
+    once in the log when a call asks otherwise)."""
+
+    def __init__(self, mp, text_pipe, crispz_blocks, repo=DEFAULT_REPO):
+        self._mp = mp
+        self._text_pipe = text_pipe
+        self.repo = repo
+        self.variant = FAMILY
+        self._interrupt = False
+        self._all_hooks = []
+        self._offload_device = None
+        self._cfg = {"is_distilled": True}
+        self._ctx = None
+        self._start = 0
+        self._last_x0 = None
+        self._cz_run_steps = None
+        self._said = set()
+        self._embeds = {}
+        self.released = False
+        self.applied_loras = []
+        # init_pipeline works on a COPY of the blocks: the crispz blocks are looked up in
+        # the pipeline's own chain, not in the list they were built into.
+        found = []
+
+        def collect(_block, subs):
+            for name, child in subs.items():
+                if name in ("crispz_hook", "crispz_start"):
+                    found.append(child)
+        _walk(getattr(mp, "_blocks", None) or mp.blocks, collect)
+        for b in found or crispz_blocks:
+            b.owner = self
+        self._crispz_blocks = len(found)
+        _offset_forward(mp.transformer)
+        _quiet_interrupt(None)
+
+    # -- plumbing ----------------------------------------------------------------------
+    def __getattr__(self, name):
+        if name.startswith("__") or name == "_mp":
+            raise AttributeError(name)
+        if name in ("text_encoder", "tokenizer", "processor"):
+            return getattr(self.__dict__["_text_pipe"], name)
+        return getattr(self.__dict__["_mp"], name)
+
+    @property
+    def config(self):
+        import types
+        return types.SimpleNamespace(**self._cfg)
+
+    def register_to_config(self, **kw):
+        self._cfg.update(kw)
+
+    def register_modules(self, **kw):
+        """The transformer (or another component) hot swap."""
+        text = {k: v for k, v in kw.items() if k in ("text_encoder", "tokenizer", "processor")}
+        rest = {k: v for k, v in kw.items() if k not in text}
+        if rest:
+            self._mp.update_components(**rest)
+        if text:
+            self._text_pipe.update_components(**text)
+            self._embeds.clear()
+        if "transformer" in kw:
+            _offset_forward(kw["transformer"])
+
+    def _say_once(self, key, msg):
+        if key not in self._said:
+            self._said.add(key)
+            _log(msg)
+
+    def _modules(self):
+        return [m for m in (self._text_pipe.text_encoder, self._mp.transformer, self._mp.vae)
+                if isinstance(m, nn.Module)]
+
+    @property
+    def _execution_device(self):
+        if self._offload_device is not None:
+            return torch.device(self._offload_device)
+        return self._mp._execution_device
+
+    # -- placement ---------------------------------------------------------------------
+    def to(self, *args, **kwargs):
+        self.remove_all_hooks()
+        for m in self._modules():
+            m.to(*args, **kwargs)
+        return self
+
+    def remove_all_hooks(self):
+        try:
+            from accelerate.hooks import remove_hook_from_module
+            for m in self._modules():
+                remove_hook_from_module(m, recurse=True)
         except Exception:
             pass
+        self._all_hooks = []
+        self._offload_device = None
+
+    def enable_model_cpu_offload(self, gpu_id=None, device="cuda", **_ignored):
+        """Text encoder, transformer and VAE take the card in turn; the others wait in RAM."""
+        from accelerate import cpu_offload_with_hook
+        dev = torch.device(device if gpu_id is None else f"{device}:{gpu_id}")
+        self.remove_all_hooks()
+        hooks, prev = [], None
+        for m in self._modules():
+            m.to("cpu")
+            _, prev = cpu_offload_with_hook(m, dev, prev_module_hook=prev)
+            hooks.append(prev)
+        self._all_hooks = hooks
+        self._offload_device = dev
+        if dev.type == "cuda":
+            torch.cuda.empty_cache()
+
+    def enable_sequential_cpu_offload(self, gpu_id=None, device="cuda", **_ignored):
+        self._say_once("seq", "sequential offload is not available with GGUF weights: using the "
+                              "model offload (one model on the card at a time) instead")
+        self.enable_model_cpu_offload(gpu_id=gpu_id, device=device)
+
+    def maybe_free_model_hooks(self):
+        for h in self._all_hooks or []:
+            try:
+                h.offload()
+            except Exception:
+                pass
+
+    def release(self):
+        """Drops what the adapter holds on the card (free_vram)."""
+        self.remove_all_hooks()
+        for m in self._modules():
+            try:
+                m.to("cpu")
+            except Exception:
+                pass
+        self._embeds.clear()
+        self._last_x0 = None
+        self._ctx = None
+        self.released = True
+
+    # -- not on this model ---------------------------------------------------------------
+    def set_loras(self, wanted):
+        if wanted:
+            raise RuntimeError("LoRAs are not supported on MiniMax-H3-Image yet")
+        self.applied_loras = []
+
+    def edit_loras_applied(self):
+        return []
+
+    def load_lora_weights(self, *a, **k):
+        raise RuntimeError("LoRAs are not supported on MiniMax-H3-Image yet")
+
+    def magic_prompt(self, *a, **k):
+        raise RuntimeError("the local magic prompt is not available on this engine: its text "
+                           "encoder ships without a language head. Use Ollama.")
+
+    def describe_image(self, *a, **k):
+        raise RuntimeError("the local Describe is not available on this engine: its text "
+                           "encoder ships without a language head. Use Ollama.")
+
+    # -- text --------------------------------------------------------------------------
+    @staticmethod
+    def _fingerprint(image):
+        import hashlib
+        small = image.convert("RGB").resize((48, 48))
+        return (image.size, hashlib.sha1(small.tobytes()).hexdigest())
+
+    @torch.no_grad()
+    def _conditioning(self, prompt, refs):
+        """(prompt_embeds, text_token_tags) of a prompt and its references, remembered: the
+        same prompt again (a batch, the detailer's passes) does not bring the 18 GB encoder
+        back onto the card. The encoder leaves the card before returning."""
+        prompt = prompt if (isinstance(prompt, str) and prompt.strip()) else " "
+        key = (prompt, tuple(self._fingerprint(r) for r in refs), id(self._text_pipe.text_encoder))
+        hit = self._embeds.get(key)
+        if hit is None:
+            t0 = time.time()
+            kw = {"prompt": prompt}
+            if refs:
+                kw["image"] = list(refs)
+            out = self._text_pipe(output=["prompt_embeds", "text_token_tags"], **kw)
+            hit = (out["prompt_embeds"].detach().to("cpu"), out["text_token_tags"].detach().to("cpu"))
+            if len(self._embeds) >= 8:
+                self._embeds.pop(next(iter(self._embeds)))
+            self._embeds[key] = hit
+            if self._all_hooks:
+                self._all_hooks[0].offload()        # the encoder goes back to RAM now
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            _log(f"text: {hit[0].shape[1]} tokens encoded in {time.time() - t0:.1f}s")
+        return hit
+
+    # -- latents -----------------------------------------------------------------------
+    def _norm_stats(self, device):
+        cfg = self._mp.vae.config
+        mean = torch.tensor(cfg.latents_mean, device=device).view(1, -1, 1, 1)
+        std = torch.tensor(cfg.latents_std, device=device).view(1, -1, 1, 1)
+        return mean, std
+
+    @torch.no_grad()
+    def _encode_image(self, image, width, height):
+        """Normalized latents (1, 24, h/16, w/16) of `image` at width x height: the inverse
+        of the pipeline's decode (ImageNet-normalized pixels, posterior mode)."""
+        import numpy as np
+        from PIL import Image
+        dev = self._execution_device
+        vae = self._mp.vae
+        img = image.convert("RGB")
+        if img.size != (width, height):
+            img = img.resize((width, height), Image.LANCZOS)
+        px = torch.from_numpy(np.asarray(img, dtype=np.float32) / 255.0).permute(2, 0, 1)[None].to(dev)
+        pm = torch.tensor(self._mp.pixel_mean, device=dev).view(1, -1, 1, 1)
+        ps = torch.tensor(self._mp.pixel_std, device=dev).view(1, -1, 1, 1)
+        px = ((px - pm) / ps).to(vae.dtype)
+        post = vae.encode(px, return_dict=False)[0]
+        lat = post.mode().float() if hasattr(post, "mode") else post.float()
+        mean, std = self._norm_stats(lat.device)
+        return (lat - mean) / std
+
+    @torch.no_grad()
+    def _decode(self, latents, width, height, output_type="pil"):
+        dev = self._execution_device
+        vae = self._mp.vae
+        mean, std = self._norm_stats(dev)
+        lat = latents.to(dev).float() * std + mean
+        img = vae.decode(lat.to(vae.dtype), return_dict=False)[0]
+        pm = torch.tensor(self._mp.pixel_mean, device=dev).view(1, -1, 1, 1)
+        ps = torch.tensor(self._mp.pixel_std, device=dev).view(1, -1, 1, 1)
+        img = (img.float() * ps + pm).clamp(0, 1)
+        return self._mp.image_processor.postprocess(img, output_type=output_type)
+
+    def _rows(self, latents):
+        """(1, 24, h, w) -> the packed rows the loop works on."""
+        from diffusers.modular_pipelines.minimax_h3_image.before_denoise import patchify_video_latents
+        return patchify_video_latents(latents[:, :, None], self._mp.patch_size)
+
+    def _unrows(self, rows, lat_h, lat_w):
+        """Packed rows of the generated image -> (1, 24, h, w)."""
+        _, ph, pw = self._mp.patch_size
+        c = self._mp.vae_latent_channels
+        x = rows.reshape(-1, lat_h // ph, lat_w // pw, c, ph, pw).permute(0, 3, 1, 4, 2, 5)
+        return x.reshape(-1, c, lat_h, lat_w)
+
+    @staticmethod
+    def _mask_rows(mask_image, width, height, device):
+        """(rows, 1): 1 = repaint, 0 = keep. A 32 px token is repainted as soon as ANY of
+        its pixels is (max-pool), so a thin stroke never vanishes below the grid."""
+        import numpy as np
+        from PIL import Image
+        m = mask_image.convert("L")
+        if m.size != (width, height):
+            m = m.resize((width, height), Image.NEAREST)
+        t = torch.from_numpy(np.asarray(m, dtype=np.float32) / 255.0)[None, None]
+        t = torch.nn.functional.max_pool2d(t, kernel_size=GRID, stride=GRID)
+        return (t.reshape(-1, 1) > 0.5).float().to(device)
+
+    @staticmethod
+    def _is_full_mask(mask_image):
+        try:
+            return mask_image.convert("L").getextrema()[0] >= 250
+        except Exception:
+            return False
+
+    # -- the step hook -----------------------------------------------------------------
+    def _on_step(self, block_state, i, t):
+        ctx = self._ctx or {}
+        k = self._start + i                               # index on the full grid
+        nxt = PDD_SIGMAS[min(k + 1, PDD_STEPS)]
+        nref = int(getattr(block_state, "num_reference_rows", 0) or 0)
+        lat = block_state.latents
+        if ctx.get("mask") is not None:
+            known = (1.0 - nxt) * ctx["x0_rows"] + nxt * ctx["noise_rows"]
+            m = ctx["mask"]
+            lat[nref:] = m * lat[nref:] + (1.0 - m) * known.to(lat.dtype)
+            block_state.latents = lat
+        # What the image would be if the run stopped here: x0 = x + sigma * velocity.
+        x0 = lat[nref:].float()
+        try:
+            x0 = x0 + nxt * block_state.noise_pred[0, nref:].float()
+        except Exception:
+            pass
+        x0 = self._unrows(x0, ctx.get("lat_h"), ctx.get("lat_w"))
+        self._last_x0 = x0
+        cb = ctx.get("callback")
+        if cb is not None:
+            cb(self, i, t, {"latents": x0})
+        if self._interrupt:
+            _quiet_interrupt(True)
+            raise _Interrupted()
+
+    # -- the call ----------------------------------------------------------------------
+    def __call__(self, prompt=None, image=None, mask_image=None, strength=None,
+                 width=None, height=None, num_inference_steps=None, generator=None,
+                 guidance_scale=None, num_images_per_prompt=1, negative_prompt=None,
+                 prompt_embeds=None, callback_on_step_end=None,
+                 callback_on_step_end_tensor_inputs=None, output_type="pil",
+                 return_dict=True, reference_init=None, **_ignored):
+        import types
+        self._interrupt = False
+        if isinstance(prompt, (list, tuple)):
+            imgs = []
+            for j, p in enumerate(prompt):
+                g = generator[j] if isinstance(generator, (list, tuple)) else generator
+                imgs += self(prompt=p, image=image, mask_image=mask_image, strength=strength,
+                             width=width, height=height, generator=g,
+                             callback_on_step_end=callback_on_step_end,
+                             output_type=output_type).images
+            return types.SimpleNamespace(images=imgs)
+
+        if num_inference_steps not in (None, PDD_STEPS, 0):
+            self._say_once(("steps", int(num_inference_steps)),
+                           f"steps {int(num_inference_steps)} ignored: MiniMax-H3-Image is distilled "
+                           f"to exactly {PDD_STEPS} steps (one output head per step)")
+        if guidance_scale is not None and abs(float(guidance_scale) - 1.0) > 1e-6:
+            self._say_once(("cfg", float(guidance_scale)),
+                           f"guidance {float(guidance_scale):g} ignored: MiniMax-H3-Image has no CFG "
+                           f"(the guidance is baked into the weights)")
+        if isinstance(negative_prompt, str) and negative_prompt.strip():
+            self._say_once("neg", "negative prompt ignored: MiniMax-H3-Image has none. Say what "
+                                  "you want in the prompt instead.")
+
+        imgs_in = image if isinstance(image, (list, tuple)) else ([image] if image is not None else [])
+        imgs_in = [r for r in imgs_in if r is not None]
+        emulated = strength is not None or mask_image is not None
+        refs = []
+        init = None
+        if emulated:
+            if not imgs_in:
+                raise ValueError("img2img / inpaint need an image to start from")
+            init = imgs_in[0]
+            width, height = width or init.size[0], height or init.size[1]
+            # Inpaint: the model also SEES the whole source as <Picture 1> (its native
+            # editing input), so what it repaints agrees with what is around the mask.
+            # Without it the masked area is drawn from the prompt alone.
+            if reference_init is None:
+                reference_init = mask_image is not None and INPAINT_WITH_REFERENCE
+            if reference_init and mask_image is not None and not self._is_full_mask(mask_image):
+                refs = [init]
+        elif imgs_in:
+            refs = list(imgs_in)
+            if len(refs) > EDIT_MAX_REFS:
+                self._say_once("refs", f"{len(refs)} references given, the model takes "
+                                       f"{EDIT_MAX_REFS}: the first {EDIT_MAX_REFS} are used")
+                refs = refs[:EDIT_MAX_REFS]
+            width, height = width or refs[0].size[0], height or refs[0].size[1]
+        w, h = fit_size(width, height)
+        if (width and height) and (w, h) != (int(width), int(height)):
+            self._say_once(("size", int(width), int(height)),
+                           f"size {width}x{height} -> {w}x{h} (MiniMax-H3-Image: multiples of "
+                           f"{GRID}, 20 Mpx at most)")
+        if w * h < SMALL_PIXELS:
+            self._say_once(("small", w, h),
+                           f"{w}x{h} is under 1 Mpx: MiniMax-H3-Image is made for 4 to 16 Mpx, "
+                           f"quality drops at small sizes")
+
+        # Same seed, same noise on every machine: the release draws its noise on the CPU.
+        gen = generator[0] if isinstance(generator, (list, tuple)) else generator
+        if gen is not None and getattr(gen, "device", None) is not None and gen.device.type != "cpu":
+            gen = torch.Generator("cpu").manual_seed(int(gen.initial_seed()))
+
+        # 1. The text first; the encoder has left the card when this returns.
+        embeds, tags = self._conditioning(prompt, refs)
+        dev = self._execution_device
+        kw = {"prompt_embeds": embeds.to(dev), "text_token_tags": tags,
+              "width": w, "height": h, "generator": gen, "output_type": output_type,
+              "min_generation_area": 1024}
+        if refs:
+            kw["image"] = refs
+        ctx = {"callback": callback_on_step_end, "lat_h": h // 16, "lat_w": w // 16}
+
+        # 2. img2img / inpaint: start later on the grid, from the noised image.
+        start = 0
+        if emulated:
+            start = strength_to_start(strength)
+            sigma0 = PDD_SIGMAS[start]
+            x0 = self._encode_image(init, w, h)
+            noise = torch.randn(x0.shape, generator=gen, dtype=torch.float32, device="cpu").to(x0.device)
+            kw["latents"] = (1.0 - sigma0) * x0 + sigma0 * noise
+            kind = "img2img"
+            if mask_image is not None and not self._is_full_mask(mask_image):
+                kind = "inpaint"
+                ctx.update(mask=self._mask_rows(mask_image, w, h, x0.device),
+                           x0_rows=self._rows(x0), noise_rows=self._rows(noise))
+            asked = 1.0 if strength is None else float(strength)
+            self._say_once((kind, round(asked, 2)),
+                           f"{kind} (emulated): strength {asked:.2f} -> sigma {sigma0:.2f}, "
+                           f"{PDD_STEPS - start} of {PDD_STEPS} steps (the grid is fixed)")
+        self._start = start
+        self._mp.transformer._cz_pdd_offset = start
+        self._cz_run_steps = PDD_STEPS - start
+        self._ctx = ctx
+        self._last_x0 = None
+        try:
+            images = self._mp(output="images", **kw)
+        except _Interrupted:
+            images = [] if self._last_x0 is None else self._decode(self._last_x0, w, h, output_type)
+        finally:
+            _quiet_interrupt(False)
+            self._ctx = None
+            self._start = 0
+            self._mp.transformer._cz_pdd_offset = 0
+            self._cz_run_steps = None
+            self.maybe_free_model_hooks()
+        if not isinstance(images, list):
+            images = list(images) if output_type == "pil" else images
+        return types.SimpleNamespace(images=images) if return_dict else (images,)
+
+
+EnginePipe = MiniMaxPipe
+
+
+# --------------------------------------------------------------------------------------
+# Loading
+# --------------------------------------------------------------------------------------
+def load_vae(repo=OFFICIAL_REPO, dtype=torch.bfloat16, token=None):
+    from diffusers import AutoencoderKLMiniMaxH3Image
+    return AutoencoderKLMiniMaxH3Image.from_pretrained(
+        repo, subfolder="vae_diffusers", torch_dtype=dtype, token=token).eval()
+
+
+def load(repo=DEFAULT_REPO, dtype=torch.bfloat16, precision=None, transformer=None,
+         text_encoder=None, token=None):
+    """A MiniMaxPipe on the CPU. `transformer` / `text_encoder`: loaded modules, file
+    paths, or None for the default files (found in ./checkpoints, else downloaded)."""
+    from diffusers import MiniMaxH3Scheduler
+    from transformers import AutoTokenizer, Qwen3VLProcessor
+
+    main_blocks, text_blocks, crispz = build_blocks()
+    mp = main_blocks.init_pipeline(repo)
+    text_pipe = text_blocks.init_pipeline()
+    tokenizer = AutoTokenizer.from_pretrained(repo, subfolder="tokenizer", token=token)
+    processor = Qwen3VLProcessor.from_pretrained(repo, subfolder="processor", token=token)
+    scheduler = MiniMaxH3Scheduler.from_pretrained(repo, subfolder="scheduler", token=token)
+    if not isinstance(text_encoder, nn.Module):
+        text_encoder = load_text_encoder(text_encoder or default_file("text_encoder", token),
+                                         dtype, repo=repo)
+    if not isinstance(transformer, nn.Module):
+        transformer = load_transformer(transformer or default_file("transformer", token), dtype)
+    vae = load_vae(repo, dtype, token)
+    mp.update_components(scheduler=scheduler, transformer=transformer, vae=vae)
+    text_pipe.update_components(text_encoder=text_encoder, tokenizer=tokenizer, processor=processor)
+    return MiniMaxPipe(mp, text_pipe, crispz, repo=repo)
