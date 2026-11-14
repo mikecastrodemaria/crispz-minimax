@@ -46,6 +46,17 @@ if "refine" in cases:
     print("_refine_whole", inspect.signature(P._refine_whole), flush=True)
     small = src.resize((1024, 1024), Image.LANCZOS).resize((2048, 2048), Image.BICUBIC)
     case("refine_030", lambda: P._refine_whole(P.get_pipe("img2img"), small, 0.3, 6, "a weathered lighthouse keeper in a yellow coat on a stone pier at dusk, detailed photograph", 5))
+if "outpaint" in cases:
+    base = src.resize((1536, 1536), Image.LANCZOS)
+    case("outpaint_lr", lambda: P.outpaint_directions(base, None, ["left", "right"],
+         "a stormy sea coast with black rocks and a stone pier, dusk, cinematic photograph", 6, 5))
+    case("reframe_16_9", lambda: P.reframe(base, 16, 9, "contain",
+         "a stormy sea coast with black rocks and a stone pier, dusk, cinematic photograph", 6, 5))
+if "gen16" in cases:
+    case("gen_4096", lambda: P.generate("An aerial photograph of a terraced rice valley at sunrise, mist between the "
+         "hills, a small village with red roofs, a winding river, extremely detailed.", 4096, 4096, 6, 3, ""))
+    case("gen_4096_again", lambda: P.generate("An aerial photograph of a terraced rice valley at sunrise, mist between the "
+         "hills, a small village with red roofs, a winding river, extremely detailed.", 4096, 4096, 6, 4, ""))
 if "gen4k" in cases:
     case("gen_3072", lambda: P.generate("A macro photograph of a jewel beetle on a wet green leaf, iridescent shell, water droplets, shallow depth of field.", 3072, 3072, 6, 11, ""))
 print("ALL OK" if ok else "SOME FAILED")

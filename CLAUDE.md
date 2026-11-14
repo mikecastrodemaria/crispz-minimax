@@ -226,10 +226,106 @@ LoRAs (aucun mixin dans diffusers 0.43.0, aucun écosystème repéré), le H3 vi
 
 ## 9. État au 14/11/2026
 
-Fork local créé, notes de crispz-moss archivées en `FORK-moss*.md`, ce fichier et
-`FORK.md` écrits. Rien n'est commité, rien n'est poussé, aucun poids téléchargé, aucun
-`.venv`. Le code est encore celui de crispz-moss. Prochaine étape : lot 1, sur
-validation de Mike.
+Les six lots ont été faits d'une traite le 14/11/2026, à la demande de Mike (« fais
+tous les lots en autonomie, on regarde à la fin l'usabilité »), sans validation entre
+les lots. Version 0.1.0. Ce qui suit est mesuré sur la 5090 sauf mention contraire.
+
+### Ce qui a été tranché en route
+
+- **Table de temps de la variante pruned** : `t` dans [0, 1] donne une position
+  `t * 1024` dans `adaln_t_table`, interpolée linéairement entre deux lignes ; la
+  projection adaLN prend ces 8 coordonnées sans activation. Lu dans
+  `comfy/ldm/minimax/model.py` (GPL-3), réécrit dans `cz_minimax.CurveTimeTable` et
+  `CurveAdaLN`, rien n'est copié.
+- **Têtes PDD** : dans les fichiers uniques, `final_layer.video_out` [576, 5376] est une
+  banque de 6 blocs, le bloc 0 est une tête complète et les blocs 1 à 5 des écarts.
+  Tête du step k = bloc 0 + bloc k. Vérifié contre `pdd_fused_heads.safetensors` du
+  dépôt officiel : écart relatif de l'ordre de 1e-10 sur les six.
+- **Clés** : mapping repris du convertisseur diffusers du H3 vidéo (Apache 2.0) : `qkv`
+  empilé `[q; k; v]`, FFN fusionnée `[gate; value]`. Les deux sont gardées telles
+  quelles (`attn.fused_projections`, `GateFirstSwiGLU`) pour ne pas recouper un poids
+  quantifié.
+- **Encodeur** : le GGUF d'unsloth (`qwen3vl_32b_minimax_h3-Q4_K_M.gguf`, 18,2 Go) a
+  les noms de tenseurs de transformers et déjà 50 couches, tour vision comprise. Chargé
+  dans un `Qwen3VLForConditionalGeneration` à 50 couches sans norme finale ni `lm_head`.
+  Les pistes nf4 et nvfp4 AWQ n'ont pas été essayées : celle-ci marchait du premier coup.
+- **GGUF en VRAM** : `GGUFParameter` / `GGUFLinear` de diffusers, 208 matrices du DiT
+  et les linéaires de l'encodeur restent quantifiés sur la carte.
+  `nn.Module.load_state_dict` refuse ces poids (forme en octets) : affectation directe
+  (`_assign_state`).
+- **Chaîne de blocs** : l'officielle moins l'encodeur de texte (encodé et mis en cache
+  par l'adaptateur, l'encodeur quitte la carte avant le reste), plus deux blocs crispz :
+  un crochet de fin de step (aperçu, mélange de l'inpaint, arrêt) et un bloc qui coupe
+  le début du planning (img2img). `init_pipeline` copie les blocs : les crochets sont
+  retrouvés dans la chaîne du pipeline, pas dans la liste d'origine.
+- **img2img** : départ au step k de la grille PDD, tête k (décalage `_cz_pdd_offset`
+  sur le transformer). La force s'arrondit à la sigma la plus proche (1,0 / 0,97 /
+  0,89 / 0,75 / 0,53 / 0,23). Lu sur images : cohérent de 0,25 à 0,9.
+- **Inpaint** : le mélange de latents seul échoue (force 1,0 : un bonnet sans tête, un
+  bloc blanc avec un prompt d'instruction). Avec la source donnée aussi en référence
+  (`INPAINT_WITH_REFERENCE`), le résultat est propre à force 1,0, avec un prompt
+  descriptif comme avec une instruction. C'est le réglage par défaut.
+- **Édition par références** : native, excellente sur les essais (manteau rouge et
+  nuit, neige), composition conservée.
+- **Tailles** : rendu à la taille demandée (`min_generation_area=1024`), pas de
+  passage forcé à 4 Mpx ; 1024 x 1024 sort propre, sous la plage du modèle.
+- **Bruit** : toujours tiré sur le CPU (même graine, même image partout) ; un
+  générateur CUDA de l'app est converti par sa graine.
+- **Offload** : `model` forcé sous 46 Go de VRAM (encodeur puis DiT), `sequential`
+  ramené à `model`. Pas de tuiles VAE : le décodage 16 Mpx tient entier.
+
+### Mesures (GGUF UD-Q5_K_XL, encodeur Q4_K_M, VAE bf16, offload model)
+
+| | Temps | Pic VRAM |
+|---|---|---|
+| Chargement | 47 à 55 s | |
+| 2048 x 2048, nouveau prompt | 30 à 33 s | 17,7 Go |
+| 2048 x 2048, même prompt | 15 s | 15,8 Go |
+| 3072 x 3072, nouveau prompt | 41 s | |
+| 4096 x 4096 | 60 à 70 s | 17,7 Go |
+| 1536 x 1024, même prompt | 9 s | 15,7 Go |
+| Édition 1 référence, 2048 x 2048 | 54 s | 18,6 Go |
+| Inpaint 2048 x 2048, source en référence | 40 à 50 s | 18,7 Go |
+| img2img 2048 x 2048, force 0,5 | 12 s | 17,3 Go |
+| Recadrage 16:9, 2720 x 1536 | 45 s | |
+| Encodage du texte | 9 à 13 s (20 s avec une référence) | |
+
+Le pic est celui de l'encodeur, pas du débruitage ni du décodage. Pic de RAM non mesuré.
+
+### Ce qui n'est pas fait, ou pas vérifié
+
+- **Usage réel** : l'interface a été lancée et une image générée par le navigateur
+  (1024 x 1024). Les onglets Edit, Inpaint / Outpaint et Upscale n'ont PAS été cliqués :
+  leurs fonctions ont été appelées par script (`tools/minimax_app_check.py`). Détailleur,
+  Face Swap, X/Y/Z, file d'attente, presets, protocole v1 en vrai : non essayés.
+- **Aperçu live** : la matrice 24 canaux est calée (erreur moyenne 7,5 sur 255) et le
+  rappel reçoit bien les latents, mais l'aperçu n'a pas été regardé dans l'interface.
+- **Outpaint directionnel** : remplit, mais laisse un raccord de teinte visible aux
+  jonctions sur l'essai. Le recadrage « contain » était propre sur la même image.
+- **Ménage** : `cz_moss.py`, `cz_moss_lora.py`, `third_party/moss_image`, `cz_caption*`,
+  `cz_design`, `cz_catalog`, `cz_handoff`, `cz_magic`, `cz_flux3.py` sont toujours là.
+  Le panneau de layout, le catalogue, les onglets de passerelle, la section LoRA et les
+  LoRAs d'édition sont masqués, pas retirés. `cz_flux3` sert encore (marqueurs de
+  famille, filtre de log de l'arrêt). Beaucoup de commentaires parlent encore de MOSS,
+  FLUX.3 ou klein ; les noms `_MOSS_*`, `ZIMAGE_*`, `FLUX3_*` restent.
+- **Tests** : 52 sur 53 (`test_vector` échoue pareil dans crispz-moss). 19 fichiers de
+  tests propres à MOSS ou FLUX retirés, quelques tests à deux dépôts retirés, un test
+  unitaire du moteur ajouté. Aucun test e2e GPU dans la suite : les trois scripts de
+  `tools/` en tiennent lieu.
+- **Fichiers non essayés** : les GGUF d'Abiray (même structure, lecture de
+  `comfy.gguf.orig_shape` écrite mais jamais exercée), Q6_K, Q8_0, tout autre encodeur.
+- **Magic prompt local et Describe local** : indisponibles (l'encodeur n'a pas de tête
+  de langage). Improve prompt (Ollama) est orienté descriptions longues en anglais.
+- **16 références** : le moteur les accepte, l'onglet n'a que 4 emplacements et le
+  protocole `MAX_REFS = 4`.
+- **Licence de l'encodeur** (`MiniMaxAI/MiniMax-H3`) : non lue.
+- **Lanceur Pinokio** : écrit dans `D:\Github\crispz-minimax.pinokio` d'après celui de
+  crispz-flux3, jamais exécuté. `install.bat` / `install.sh` non rejoués : le `.venv` a
+  été monté à la main avec uv, de la même façon (lock sans Pillow, puis Pillow 13).
+- `README_CLI.md`, `config_modification_tutorial.txt`, `SECURITY.md` : noms remplacés,
+  contenu non relu.
+- **Avis de licence** : écrit dans le README, la note du dépôt (onglet Models) et le log
+  au premier chargement de chaque session. Pas de fenêtre au premier lancement.
 
 ## 10. Sources
 

@@ -426,6 +426,7 @@ _MOSS_MARKERS = (".video_embedder.", ".text_embedder.", ".shared_block_modulatio
                  ".final_linear_video.", ".proj.ffn_up_gate.", ".proj.ffn_down.")
 _IDEOGRAM_MARKERS = (".llm_cond_proj.", ".llm_cond_norm.", ".embed_image_indicator.",
                      ".unconditional_transformer.")
+_LICENCE_SAID = False
 _TEXT_ENCODER_MARKERS = ("model.layers.0.self_attn.q_proj.weight", "model.embed_tokens.weight")
 
 
@@ -1199,6 +1200,10 @@ def load(repo=DEFAULT_REPO, dtype=torch.bfloat16, precision=None, transformer=No
     from diffusers import MiniMaxH3Scheduler
     from transformers import AutoTokenizer, Qwen3VLProcessor
 
+    global _LICENCE_SAID
+    if not _LICENCE_SAID:
+        _LICENCE_SAID = True
+        _log(LICENCE_NOTE)           # once per session, at the first load
     main_blocks, text_blocks, crispz = build_blocks()
     mp = main_blocks.init_pipeline(repo)
     text_pipe = text_blocks.init_pipeline()

@@ -1,9 +1,26 @@
 # Changelog
 
-All notable changes to crispz-moss. The "0.1.0 (crispz-ideogram)" entry and the ones
+All notable changes to crispz-minimax. The "0.1.0 (crispz-ideogram)" entry and the ones
 below it are crispz-ideogram's, crispz-flux3's and crispz-klein's history, kept as is.
 The app version lives in `cz_core.py` (`APP_VERSION`) and is shown in the browser tab title.
 
+
+## 0.1.0 (2026-11-14, crispz-minimax) : crispz-moss ported to MiniMax-H3-Image
+
+- **Engine `cz_minimax.py`**: the pruned (curve form) MiniMax-H3-Image transformer and
+  the Qwen3-VL-32B text encoder (50 layers) from GGUF files, kept quantized on the card,
+  on diffusers 0.43.0's modular pipeline. Text encoder, transformer and VAE take the
+  card in turn.
+- **Text to image** from 1 to 20 Mpx on a 32 px grid; presets at 4, 9 and 16 Mpx.
+- **Editing with references**, native (`<Picture 1>` ...).
+- **img2img, inpaint, outpaint, reframe** emulated on the model's fixed 6-step grid; an
+  inpaint also hands the source to the model as a reference.
+- Steps, guidance, sampler and negative prompt are fixed by the model and no longer
+  offered. LoRAs, the layout editor, the character catalog and the hand-over tabs are
+  hidden.
+- Licence notice (territory) in the README, the Models tab and the log of the first
+  download.
+- Everything below is crispz-moss's history and its ancestors', kept as is.
 
 ## 1.0.0 (2026-11-05, crispz-moss) : crispz-ideogram ported to MOSS-Image
 
