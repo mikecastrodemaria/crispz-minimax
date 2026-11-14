@@ -9,7 +9,7 @@
 # bound. An exact pin, not a lower bound: the modular API is young and this fork wires
 # into its block chain (cz_flux3 removes blocks and inserts a hook); a newer diffusers
 # is tried on purpose, with the tests, not inherited.
-diffusers==0.42.1
+diffusers==0.43.0
 
 # transformers 5.x is REQUIRED, not merely allowed: diffusers 0.42.1 wants
 # huggingface-hub>=1.32 and transformers 4.x pins huggingface-hub<1.0, so the two

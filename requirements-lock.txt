@@ -32,7 +32,7 @@
 
 # diffusers: 0.42.1 is the first PyPI release with FLUX.3 (no more git+commit, see
 # requirements.txt for why the pin is exact)
-diffusers==0.42.1
+diffusers==0.43.0
 
 # the torch base (deliberately outside requirements.txt, indispensable here). 2.11 is
 # the newest build on the cu128 index on 2026-10-28; Dependabot's torch alerts (< 2.13)
