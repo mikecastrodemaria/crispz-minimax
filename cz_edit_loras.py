@@ -38,7 +38,7 @@ from cz_core import CONFIG, _log, _dbg
 # FLUX.2-klein files (double_blocks keys) and cz_pipeline._lora_unsupported refuses them
 # here by family.
 # The outpaint-through-edit-LoRA path of crispz-flux3 (cz_pipeline.outpaint_lora) keeps
-# its names: no MOSS-Image outpaint LoRA exists, the preset is NOT in the catalogue and
+# its names: no MiniMax-H3-Image outpaint LoRA exists, the preset is NOT in the catalogue and
 # that path refuses by name (the app's outpaint is the emulated one, lot 3).
 OUTPAINT_PRESET = "Outpaint"
 OUTPAINT_PROMPT = ("Outpaint the image: replace the solid gray areas with a seamless "
@@ -476,7 +476,7 @@ def resolve_speed(name, omni_model, download=True):
 
 
 # ----------------------------------------------------------------------------
-# Draft presets tied to a distillation LoRA (crispz-moss, lot 4 follow-up). The DMD
+# Draft presets tied to a distillation LoRA (crispz-minimax, lot 4 follow-up). The DMD
 # adapter of lodestones (Apache 2.0) renders a clean image in 8 steps at CFG 1 on the
 # SFT model: measured on the 5090 (bench/lot4), texts exact, one DiT forward per step,
 # about 8 to 10 s for a 1.9 Mpx poster against 22 s for the base model at 12 steps. Its

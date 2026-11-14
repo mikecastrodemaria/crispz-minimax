@@ -1,4 +1,4 @@
-"""crispz-moss - the Gradio interface (build_ui) + the UI handlers + the shared
+"""crispz-minimax - the Gradio interface (build_ui) + the UI handlers + the shared
 orchestration (run / _editor_* / presets / timing) pulled out of app.py (step 8).
 
 This module wires all the cz_* modules together (core/pipeline/esrgan/face/prompt/ollama/
@@ -94,7 +94,7 @@ PRESETS = {
     # ComfyUI Ultimate SD Upscale style settings (x2, 1024 tiles, a low denoise). The
     # presets do NOT touch the offload any more (except Low VRAM): forcing 'none' overrode
     # the 'auto' VRAM test's verdict and froze tight cards (a spill into shared RAM).
-    # crispz-moss: the steps are the length of the EMULATED img2img schedule,
+    # crispz-minimax: the steps are the length of the EMULATED img2img schedule,
     # of which the denoise runs the tail. Measured on the 5090 (03/11/2026, the lot 2
     # poster, x2 + refine at denoise 0.30): 12 steps 35.6 s, 36 steps 54.4 s, images
     # identical to the eye (mean difference 2/255, the texts unchanged at 100 %). The
@@ -123,54 +123,43 @@ PRESET_FLAGMAP = {
 # other crispz apps import them. Only the words a user reads change (2026-10-28).
 EDIT_MODE = "Edit (references)"
 
-# Fooocus-style aspect ratios. label -> (width, height) in multiples of 16.
+# Aspect ratios. label -> (width, height), multiples of 32 (16x VAE, 2x2 patches).
+# crispz-minimax: MiniMax-H3-Image is made for 4 to 16 Mpx (best around 16, its release
+# sizes are the last group). Measured on an RTX 5090, GGUF UD-Q5_K_XL, 6 steps:
+# 2048x2048 in about 15 s once the prompt is encoded, 4096x4096 in about 55 s. The 1 Mpx
+# group is a draft size: the model runs there, below its range.
 ASPECT_RATIOS = {
-    "1024 x 1024  (1:1)":  (1024, 1024),
-    "1280 x 1024  (5:4)":  (1280, 1024),
-    "1024 x 1280  (4:5)":  (1024, 1280),
-    "1152 x 896  (9:7)":   (1152, 896),
-    "896 x 1152  (7:9)":   (896, 1152),
-    "1280 x 960  (4:3)":   (1280, 960),
-    "960 x 1280  (3:4)":   (960, 1280),
-    "1216 x 832  (3:2)":   (1216, 832),
-    "832 x 1216  (2:3)":   (832, 1216),
-    "1536 x 1024  (3:2)":  (1536, 1024),
-    "1024 x 1536  (2:3)":  (1024, 1536),
-    "1344 x 768  (16:9)":  (1344, 768),
-    "768 x 1344  (9:16)":  (768, 1344),
-    "1536 x 864  (16:9)":  (1536, 864),
-    "864 x 1536  (9:16)":  (864, 1536),
-    "1536 x 640  (21:9)":  (1536, 640),
-    "640 x 1536  (9:21)":  (640, 1536),
-    # --- 2K and 4K: FLUX.3 renders them NATIVELY, no tiling, no upscale. Measured on an
-    # RTX 5090 in bf16 on 2026-10-28 (16 steps, CPU offload 'model', see FORK.md):
-    # 2048x2048 in 52 s, 2560x1440 in 34 s, 3840x2160 in 113 s, the 4K as clean as the
-    # 1 MP renders (no duplicated subject, coherent composition). diffusers caps a
-    # REFERENCE image at 4 MP / 4096 px a side, which is also the slider ceiling here. The
-    # cost follows the token count (1 MP = 4096 tokens, 4 MP = 16384, 8.3 MP = 32400).
-    # Exact ratios, multiples of 16.
-    "2K  2048 x 2048  (1:1)":    (2048, 2048),
-    "2K  2304 x 1728  (4:3)":    (2304, 1728),
-    "2K  1728 x 2304  (3:4)":    (1728, 2304),
-    "2K  2432 x 1600  (3:2)":    (2432, 1600),
-    "2K  1600 x 2432  (2:3)":    (1600, 2432),
-    "2K  2560 x 1600  (16:10)":  (2560, 1600),
-    "2K  1600 x 2560  (10:16)":  (1600, 2560),
-    "2K  2560 x 1440  (16:9)":   (2560, 1440),
-    "2K  1440 x 2560  (9:16)":   (1440, 2560),
-    "2K  2944 x 1264  (21:9)":   (2944, 1264),
-    "FHD  1920 x 1088  (16:9)":  (1920, 1088),
-    "4K  3840 x 2160  (16:9)":   (3840, 2160),
-    "4K  2160 x 3840  (9:16)":   (2160, 3840),
-    "4K  2880 x 2880  (1:1)":    (2880, 2880),
-    "4K  3456 x 2304  (3:2)":    (3456, 2304),
-    "4K  2304 x 3456  (2:3)":    (2304, 3456),
-    "4K  4096 x 1760  (21:9)":   (4096, 1760),
+    "4 Mpx  2048 x 2048  (1:1)":   (2048, 2048),
+    "4 Mpx  2368 x 1792  (4:3)":   (2368, 1792),
+    "4 Mpx  1792 x 2368  (3:4)":   (1792, 2368),
+    "4 Mpx  2496 x 1664  (3:2)":   (2496, 1664),
+    "4 Mpx  1664 x 2496  (2:3)":   (1664, 2496),
+    "4 Mpx  2720 x 1536  (16:9)":  (2720, 1536),
+    "4 Mpx  1536 x 2720  (9:16)":  (1536, 2720),
+    "4 Mpx  3136 x 1344  (21:9)":  (3136, 1344),
+    "9 Mpx  3072 x 3072  (1:1)":   (3072, 3072),
+    "9 Mpx  3552 x 2656  (4:3)":   (3552, 2656),
+    "9 Mpx  2656 x 3552  (3:4)":   (2656, 3552),
+    "9 Mpx  3744 x 2496  (3:2)":   (3744, 2496),
+    "9 Mpx  2496 x 3744  (2:3)":   (2496, 3744),
+    "9 Mpx  4096 x 2304  (16:9)":  (4096, 2304),
+    "9 Mpx  2304 x 4096  (9:16)":  (2304, 4096),
+    "16 Mpx  4096 x 4096  (1:1)":  (4096, 4096),
+    "16 Mpx  4736 x 3552  (4:3)":  (4736, 3552),
+    "16 Mpx  3552 x 4736  (3:4)":  (3552, 4736),
+    "16 Mpx  5024 x 3360  (3:2)":  (5024, 3360),
+    "16 Mpx  3360 x 5024  (2:3)":  (3360, 5024),
+    "16 Mpx  5472 x 3072  (16:9)": (5472, 3072),
+    "16 Mpx  3072 x 5472  (9:16)": (3072, 5472),
+    "16 Mpx  6272 x 2688  (21:9)": (6272, 2688),
+    "Draft 1 Mpx  1024 x 1024  (1:1)":  (1024, 1024),
+    "Draft 1 Mpx  1152 x 896  (9:7)":   (1152, 896),
+    "Draft 1 Mpx  896 x 1152  (7:9)":   (896, 1152),
+    "Draft 1 Mpx  1216 x 832  (3:2)":   (1216, 832),
+    "Draft 1 Mpx  832 x 1216  (2:3)":   (832, 1216),
+    "Draft 1 Mpx  1344 x 768  (16:9)":  (1344, 768),
+    "Draft 1 Mpx  768 x 1344  (9:16)":  (768, 1344),
 }
-# crispz-moss: MOSS-Image renders 256 to 2048 px a side, 4 Mpx at most (cz_moss.fit_size).
-# The FLUX.3 2K/4K formats above 2048 would be shrunk silently-but-logged at every render,
-# so they are not offered. Lot 2 redoes this list with the design presets (6:1 banner...).
-ASPECT_RATIOS = {k: v for k, v in ASPECT_RATIOS.items() if max(v) <= 2048}
 # A list sorted from the squarest to the widest, each format followed by its portrait
 # counterpart. The 1536 entries (3:2, 16:9) and the 5:4 / 4:3 ones are EXACT ratios, the ones
 # read on CivitAI/ComfyUI recipes -- unlike the 832x1216 / 768x1344 / 1536x640 inherited from
@@ -188,14 +177,13 @@ _LIVE_PREVIEW_POLL = 0.25
 # FLUX.3: the distilled checkpoint is a 16-step flow map (BFL's recipe, no CFG); 8 steps is
 # a draft mode to be measured on the 5090; the undistilled -base checkpoint wants 50 steps
 # and a real CFG of 3.5 (model card). The same three live in config-sample.txt.
-# crispz-moss: MOSS-Image's official 50 steps / CFG 3.0, and a draft; the same two live in
+# crispz-minimax: MiniMax-H3-Image's official 50 steps / CFG 3.0, and a draft; the same two live in
 # config-sample.txt (performance_presets wins when the config defines it).
+# crispz-minimax: ONE setting. The checkpoint is distilled to exactly 6 steps with one
+# output head per step and no CFG; anything else is refused by the model, so nothing
+# else is offered.
 PERFORMANCE = {
-    "MOSS (50 steps)": (50, 3.0),
-    "Draft (12 steps)": (12, 3.0),
-    "Draft (8 steps, DMD LoRA)": (8, 1.0),
-    "Draft (4 steps, Turbo LoRA)": (4, 1.0),
-    "Draft (3 steps, Turbo LoRA)": (3, 1.0),
+    "MiniMax (6 steps)": (6, 1.0),
 }
 # Styles. Fooocus format: name -> {"prompt": a template with {prompt} (or None),
 # "negative_prompt": str}. The real library is loaded from styles/*.json (see _load_styles
@@ -305,9 +293,7 @@ import json  # noqa: F811 (utilise par _load_styles ci-dessous)
 # Lightning 8-step).
 # The third element may also name a draft preset of cz_edit_loras (its adapter name):
 # that LoRA is fetched from the hub once and tied to the preset (see _performance_lora).
-PERFORMANCE_LORA = {"Draft (8 steps, DMD LoRA)": "moss-dmd-8-steps",
-                    "Draft (4 steps, Turbo LoRA)": "moss-turbo-4-steps",
-                    "Draft (3 steps, Turbo LoRA)": "moss-turbo-3-steps"}
+PERFORMANCE_LORA = {}
 _BUILT_IN_PERFORMANCE = dict(PERFORMANCE)
 _BUILT_IN_PERFORMANCE_LORA = dict(PERFORMANCE_LORA)
 
@@ -643,15 +629,15 @@ def _refresh_models(new_dir):
 # dropdown: choosing a base repo = a COMPLETE swap (transformer + VAE + Qwen3-VL encoder).
 # crispz-klein's `klein_base_repos` and crispz-flux3's `flux3_base_repos` are NOT read:
 # their values are FLUX repos, which this build refuses anyway.
-# crispz-moss: two official MOSS-Image checkpoints, SFT (the default) and Base. The two
+# crispz-minimax: two official MiniMax-H3-Image checkpoints, SFT (the default) and Base. The two
 # FLUX3_* names stay (the selector code and merges from crispz-flux3 use them): 'Base'
-# maps to MOSS-Image-Base, 'Distilled' (the default) to the SFT. Config `moss_base_repos`
+# maps to MOSS-Image-Base, 'Distilled' (the default) to the SFT. Config `minimax_base_repos`
 # can add mirrors or local folders.
-import cz_moss
-FLUX3_DISTILLED = cz_moss.DEFAULT_REPO
-FLUX3_BASE = cz_moss.BASE_REPO
-ZIMAGE_BASE_REPOS = [r for r in (CONFIG.get("moss_base_repos")
-                                 or list(cz_moss.MOSS_REPOS))
+import cz_minimax as cz_engine
+FLUX3_DISTILLED = cz_engine.DEFAULT_REPO
+FLUX3_BASE = cz_engine.BASE_REPO
+ZIMAGE_BASE_REPOS = [r for r in (CONFIG.get("minimax_base_repos")
+                                 or list(cz_engine.ENGINE_REPOS))
                      if isinstance(r, str) and r.strip()]
 # A base repo coming from the config/prefs must stay selectable even when it is absent
 # from the list: otherwise the dropdown shows one model while the pipeline uses another (and
@@ -667,20 +653,17 @@ _KOMMUNITY = ("**FLUX Kommunity License**: free, commercial use included, under 
               "READ token (config `hf_token` or env HF_TOKEN). VRAM, BFL's figures to be "
               "measured here: about 19 GB all-in in bf16, 14.4 in fp8r, 13.5 in nvfp4 "
               "(the Precision selector); below that, set CPU offload to `model`.")
-_MOSS_NOTE = ("**Apache 2.0** (weights and pipeline code): commercial use allowed, attribution "
-              "kept. Public repo, no token needed (https://huggingface.co/{repo}). 50 steps, "
-              "CFG 3.0 (3 to 6), real negative prompt. About 27 GB on disk in bf16 (DiT 10.2, "
-              "Qwen3.5-9B encoder 16.8, VAE 0.25); on a 32 GB card the encoder leaves between "
-              "prompts (CPU offload `model` or `auto`). {which}")
+_MOSS_NOTE = ("**MiniMax-H3-Image Community License**: rights are granted worldwide **except in "
+              "the European Union, the United Kingdom, the Republic of Korea and the United "
+              "States** (separate authorization: https://platform.minimax.io/license); a "
+              "written authorization is also needed above 1 M USD of yearly revenue or for a "
+              "hosted service. You are responsible for checking that you may use the model "
+              "where you are (https://huggingface.co/{repo}/blob/main/LICENSE). This repo "
+              "lends the VAE, the tokenizer and the configs; the transformer and the text "
+              "encoder are GGUF files (about 15.5 and 18.2 GB by default), which take the "
+              "card in turn on a 32 GB GPU. 6 steps, no CFG, no negative prompt.")
 BASE_REPO_NOTES = {
-    cz_moss.DEFAULT_REPO: _MOSS_NOTE.format(
-        repo=cz_moss.DEFAULT_REPO,
-        which="SFT: the supervised fine-tune, clearer text grouping; known vertical banding "
-              "on some renders (a DeBand LoRA exists, lot 4)."),
-    cz_moss.BASE_REPO: _MOSS_NOTE.format(
-        repo=cz_moss.BASE_REPO,
-        which="Base: the pretrained checkpoint LoRAs are trained on, rawer compositions, "
-              "no banding."),
+    cz_engine.DEFAULT_REPO: _MOSS_NOTE.format(repo=cz_engine.DEFAULT_REPO),
 }
 # The default Performance preset for each official base repo. Empty: profile_for_model()
 # decides from the name (flux-3-image-klein-base -> 50 / 3.5, flux-3-image-klein -> 16 /
@@ -768,7 +751,7 @@ def _undistilled_profile():
 # The Generate sliders' bounds, the single source for the sliders below and for the
 # CivitAI consensus guard: a sidecar written before the median ignored zeros (or a page
 # whose images all publish "steps": 0) must never push a value the slider refuses.
-GEN_STEPS_BOUNDS = (2, 80)
+GEN_STEPS_BOUNDS = (1, 12)   # shown for the record: the model always runs 6
 GUIDANCE_BOUNDS = (0.0, 10.0)
 
 
@@ -962,7 +945,7 @@ def _apply_variant(v):
     checkpoint -> nothing moves, so clicking the current one never costs a reload."""
     repo = FLUX3_BASE if str(v).strip().lower().startswith("base") else FLUX3_DISTILLED
     if repo == cz_pipeline.BASE_REPO:
-        # The selector is hidden on crispz-moss (the repo dropdown does the same swap).
+        # The selector is hidden on crispz-minimax (the repo dropdown does the same swap).
         return (gr.update(),) * 6
     return _apply_checkpoint(repo)
 
@@ -973,7 +956,7 @@ def _ui_set_precision(p):
     before = cz_pipeline.PRECISION
     now = cz_pipeline.set_precision(p)
     try:
-        _save_prefs_keys({"moss_precision": now})
+        _save_prefs_keys({"minimax_precision": now})
     except Exception as e:
         _dbg(f"precision not persisted: {e}")
     if now == before:
@@ -1099,7 +1082,7 @@ def _ui_civitai_reco(name, progress=gr.Progress()):
         parts.append(f"CFG={reco['guidance']} (not usable, ignored)")
     if reco.get("sampler"):
         parts.append(f"sampler={reco['sampler']}"
-                     + " (not applied: MOSS-Image runs its own flow-matching schedule)")
+                     + " (not applied: MiniMax-H3-Image runs its own flow-matching schedule)")
     if reco.get("size"):
         parts.append(f"size={reco['size']} (info only)")
     msg = (f"📊 CivitAI consensus ({reco.get('n', '?')} community image(s)): "
@@ -1715,7 +1698,7 @@ def _ui_detect_improve_models(url):
 
 
 # Negative Improve in the UI: hidden when the negative has no effect on the model.
-IMPROVE_NEGATIVE_UI = True
+IMPROVE_NEGATIVE_UI = False   # crispz-minimax: no negative prompt
 
 
 def _ui_detect_ollama(url):
@@ -2213,11 +2196,6 @@ def _ui_gallery_open(output_dir):
     # Characters / Styles tabs too, when the MOSS catalog is cached and they are stale.
     def _build():
         ab_build_catalog(output_dir, cz_pipeline._lora_dirs(), cz_pipeline._checkpoint_dirs())
-        try:
-            import cz_catalog
-            cz_catalog.ensure_index(output_dir, bool(_prefs.get("catalog_remote_thumbs", False)))
-        except Exception as e:
-            _dbg(f"character catalog tabs: {e}")
     try:
         threading.Thread(target=_build, daemon=True).start()
     except Exception as e:
@@ -2587,7 +2565,7 @@ def _vram_hint(e):
         return ""
     return ("  \n**VRAM full**, even after clearing the cache: close the other GPU apps "
             "(ComfyUI...), lower Image number, the upscale factor or the number of "
-            "references. If the next render fails too, restart crispz-moss.")
+            "references. If the next render fails too, restart crispz-minimax.")
 
 
 def _with_live_preview(fn):
@@ -2881,7 +2859,7 @@ def _ui_generate(prompt, negative, styles, style_random, use_input, input_image,
                     if "CUDA" in str(e) or "out of memory" in str(e).lower():
                         msg += ("  \n**VRAM full** (another GPU app like ComfyUI still loaded? "
                                 "spill -> Windows TDR timeout). Close the other GPU apps, **restart "
-                                "crispz-moss** (the CUDA context is dead), lower refine_tile / factor.")
+                                "crispz-minimax** (the CUDA context is dead), lower refine_tile / factor.")
                     # The images already produced stay displayed/saved.
                     return _done(images, "  \n".join(reports + [msg]), img_paths)
                 images.append(last_result)
@@ -4198,8 +4176,8 @@ def _ensure_model_presets(checkpoints):
             "prompt": "",
             "negative": CONFIG.get("default_negative_prompt", "") or "",
             "styles": list(CONFIG.get("default_styles", []) or []),
-            "width": int(CONFIG.get("default_width", 1024)),
-            "height": int(CONFIG.get("default_height", 1024)),
+            "width": int(CONFIG.get("default_width", 2048)),
+            "height": int(CONFIG.get("default_height", 2048)),
             "steps": steps, "guidance": g,
             "sampler": (CONFIG.get("default_sampler") or "euler").strip().lower(),
             "schedule": (CONFIG.get("default_schedule") or "sgm_uniform").strip().lower(),
@@ -4289,7 +4267,7 @@ def _preset_switch_base(data):
         return ""
     if want not in ZIMAGE_BASE_REPOS:
         return (f"\n\n⚠ This preset was saved on the base repo `{want}`, which is not "
-                f"offered here (config `moss_base_repos`). The base was left on "
+                f"offered here (config `minimax_base_repos`). The base was left on "
                 f"`{cz_pipeline.BASE_REPO}`.")
     was = cz_pipeline.BASE_REPO
     set_zimage_transformer("")
@@ -4331,7 +4309,7 @@ def _preset_ckpt_refusal(ckpt, data):
         # No base of THIS build loads it: the width (3072) would otherwise point at the
         # FLUX.3 distilled repo, a wrong direction said with confidence.
         action = ("**This preset names a FLUX.2 Klein checkpoint, which runs in "
-                  "crispz-klein, not here: pick a MOSS-Image model above, then hit "
+                  "crispz-klein, not here: pick a MiniMax-H3-Image model above, then hit "
                   "_Update selected_ to repair the preset.**")
     elif target and target in ZIMAGE_BASE_REPOS and target != cz_pipeline.BASE_REPO:
         action = (f"**Pick `{target}` in the model dropdown above, then "
@@ -4486,13 +4464,13 @@ def build_ui():
             _sample_urls[n] = "/gradio_api/file=" + os.path.abspath(p).replace("\\", "/")
     js_full = CZ_JS.replace("__MAP__", json.dumps(_sample_urls))
     # Omni (multi-reference) is only offered when an Omni/Edit model is configured.
-    # crispz-moss (lot 4b): reference editing runs in the base pipeline through the
+    # crispz-minimax (lot 4b): reference editing runs in the base pipeline through the
     # Moss-Image-Edit LoRA (cz_protocol.OMNI_SUPPORTED). The tab is shown whether the
     # LoRA is on disk or not: the first Edit fetches it and says so.
     import cz_protocol as _czproto
     omni_on = _czproto.OMNI_SUPPORTED and bool((cz_pipeline.OMNI_MODEL or "").strip())
 
-    with gr.Blocks(title=f"crispz-moss {APP_VERSION}", theme=gr.themes.Default(), css=FOOOCUS_CSS,
+    with gr.Blocks(title=f"crispz-minimax {APP_VERSION}", theme=gr.themes.Default(), css=FOOOCUS_CSS,
                    js=js_full, head=_ui_head()) as demo:
         # The output folder's gallery opens in a new tab (the Asset Browser), through
         # the button under the preview. No inline gallery panel.
@@ -4583,12 +4561,13 @@ def build_ui():
                     btn = gr.Button("Generate", elem_id="cz_generate", scale=1, min_width=150)
 
                 with gr.Row(equal_height=True):
-                    # crispz-moss: a real negative prompt (MOSS-Image runs a real CFG).
-                    negative = gr.Textbox(show_label=False,
+                    # crispz-minimax: a real negative prompt (MiniMax-H3-Image runs a real CFG).
+                    negative = gr.Textbox(show_label=False, visible=False,   # no negative prompt on this model
+                                         
                                           value=CONFIG.get("default_negative_prompt", "") or "",
                                           elem_id="cz_neg", lines=1, max_lines=6, container=False, scale=4,
-                                          placeholder="Negative prompt (optional). MOSS-Image's own suggestion: "
-                                                      + cz_moss.NEGATIVE_PRESET)
+                                          placeholder="Negative prompt (optional). MiniMax-H3-Image's own suggestion: "
+                                                      + cz_engine.NEGATIVE_PRESET)
                     stop_btn = gr.Button("Stop", variant="stop", scale=1, min_width=150)
 
                 with gr.Row():
@@ -4609,8 +4588,11 @@ def build_ui():
                                                     elem_id="cz_improve_neg_dir")
                 # The layout editor (presets, magic prompt, Describe,
                 # boxes drawn with the mouse). Wired further down, once width/height exist.
+                # crispz-minimax: MOSS-Image's layout language does not exist on this model.
+                # The panel is built hidden so that its wiring stays valid.
                 import cz_caption_ui
-                caption_panel = cz_caption_ui.build_panel()
+                with gr.Group(visible=False):
+                    caption_panel = cz_caption_ui.build_panel()
                 # Improve directives (one call, never saved): the ✎ button unfolds the
                 # panel; the plain Improve button keeps its one-click behaviour.
                 improve_dir_open = gr.State(False)
@@ -4711,7 +4693,7 @@ def build_ui():
                         info="Edit (references) = MOSS-Image edits Ref 1 of the Edit tab from the instruction in the prompt (the Moss-Image-Edit LoRA; up to 3 more references, named in plain words)")
                     with gr.Tabs():
                         with gr.Tab("Upscale or img2img"):
-                            gr.Markdown("*MOSS-Image has no native img2img or inpaint: crispz-moss EMULATES them (SDEdit on the tail of its own schedule; latent blending under the mask). Denoise = the fraction of the steps that runs.*")
+                            gr.Markdown("*MiniMax-H3-Image has no native img2img or inpaint: crispz-minimax EMULATES them (SDEdit on the tail of its own schedule; latent blending under the mask). Denoise = the fraction of the steps that runs.*")
                             with gr.Row():
                                 inp = _crop_input("Drop image here / click to upload", 300)
                                 with gr.Column():
@@ -4773,7 +4755,7 @@ def build_ui():
                         with gr.Tab("Vision Mix"):
                             gr.Markdown("*Vision Mix: a vision model looks at your reference images "
                                         "and an LLM blends them into ONE text prompt (e.g. a person + "
-                                        "an outfit + a setting), then MOSS-Image generates from it. "
+                                        "an outfit + a setting), then MiniMax-H3-Image generates from it. "
                                         "Needs Ollama with a vision model (Advanced > Prompt AI). "
                                         "It mixes ideas/style, not exact pixels.*")
                             with gr.Row():
@@ -4797,15 +4779,15 @@ def build_ui():
                             rembg_status = gr.Markdown("*Local (rembg). Output = transparent PNG. "
                                                        "First use downloads the u2net model.*")
 
-                        with gr.Tab("Edit in crispz-flux3"):
+                        with gr.Tab("Edit in crispz-flux3", visible=False):
                             import cz_handoff
                             _ho_ok, _ho_why = cz_handoff.status()
-                            gr.Markdown("*Native multi-reference editing (MOSS-Image edits "
+                            gr.Markdown("*Native multi-reference editing (MiniMax-H3-Image edits "
                                         "only through the Moss-Image-Edit LoRA, Edit "
                                         "(references) tab). This sends the image and the "
                                         "instruction to **crispz-flux3** on this machine "
                                         "(protocol v1): through its app when it runs, "
-                                        "otherwise in its own process after crispz-moss "
+                                        "otherwise in its own process after crispz-minimax "
                                         "frees its VRAM. Nothing leaves the machine. Up to "
                                         "3 references.*")
                             with gr.Row():
@@ -4827,14 +4809,14 @@ def build_ui():
                                                variant="primary", size="sm",
                                                interactive=_ho_ok)
 
-                        with gr.Tab("Compare in crispz-ideogram"):
+                        with gr.Tab("Compare in crispz-ideogram", visible=False):
                             _cmp_ok, _cmp_why = cz_handoff.status_of(cz_handoff.IDEOGRAM)
                             gr.Markdown("*An A/B on demand: the **main prompt** (a MOSS layout "
                                         "is translated to the Ideogram 4 caption schema, same "
                                         "boxes, same size, same seed) is rendered by "
                                         "**crispz-ideogram** on this machine (protocol v1): "
                                         "through its app when it runs, otherwise in its own "
-                                        "process after crispz-moss frees its VRAM. Nothing "
+                                        "process after crispz-minimax frees its VRAM. Nothing "
                                         "leaves the machine. **Ideogram 4 is non-commercial: "
                                         "the result is a comparison, never a client "
                                         "deliverable.** Ports: both apps start on 7860, the "
@@ -4880,7 +4862,7 @@ def build_ui():
                             vec_status = gr.Markdown("")
 
                         with gr.Tab("Inpaint / Outpaint"):
-                            gr.Markdown("*MOSS-Image has no native img2img or inpaint: crispz-moss EMULATES them (SDEdit on the tail of its own schedule; latent blending under the mask). Denoise = the fraction of the steps that runs.*")
+                            gr.Markdown("*MiniMax-H3-Image has no native img2img or inpaint: crispz-minimax EMULATES them (SDEdit on the tail of its own schedule; latent blending under the mask). Denoise = the fraction of the steps that runs.*")
                             gr.Markdown("*One editor for everything: **Brush** = inpaint the painted "
                                         "area · **Expand sides** = outpaint Left/Right/Top/Bottom "
                                         "(inpaint blend) · "
@@ -4888,7 +4870,7 @@ def build_ui():
                                         "(Performance). Describe the result in the prompt.*")
                             edit_mode = gr.Radio(
                                 # "Expand sides (outpaint LoRA)" is FLUX.3's Outpaint LoRA:
-                                # the LoRA family guard refuses it on MOSS-Image, so the
+                                # the LoRA family guard refuses it on MiniMax-H3-Image, so the
                                 # mode is not offered (its handler stays, for merges).
                                 ["Brush (inpaint)", "Expand sides (outpaint)",
                                  "Reframe (ratio)"],
@@ -4949,22 +4931,18 @@ def build_ui():
                             with gr.Row(elem_classes="cz-omni-head", equal_height=False):
                                 with gr.Column(scale=3, min_width=340):
                                     gr.Markdown(
-                                        "*Edit an image from an instruction: put it in **Ref 1** "
-                                        "(the result takes its size, unless **Output size from "
-                                        "Settings** below is ticked). Say what to change and what "
-                                        "to keep, e.g. *Change the background to a sunny beach, "
-                                        "preserving the logo.* This runs the community "
-                                        "**Moss-Image-Edit LoRA** on the base model (fetched "
-                                        "once, about 300 MB; its author states no licence for "
-                                        "the weights: check before a client job). The LoRA was "
-                                        "trained with ONE reference: Ref 2 to 4 are experimental, "
-                                        "their content can leak into the result. Texts in the "
-                                        "image are redrawn, not copied: keep Ref 1 at its own "
-                                        "size (`moss_edit_ref_max_edge`) and check them. Then "
-                                        "click **Edit** below (or Generate with Input mode = "
-                                        "Edit (references)). Steps / guidance: Settings (the "
-                                        "author's script uses 50 steps, CFG 4; CFG 4 kept the "
-                                        "texts better than 3 on the 5090).*")
+                                        "*Editing is **native** on MiniMax-H3-Image (same model, no "
+                                        "LoRA): put the image to edit in **Ref 1**, add up to three "
+                                        "more references, and say what to change and what to keep. "
+                                        "In the prompt the references are called `<Picture 1>`, "
+                                        "`<Picture 2>`... in the order of the slots, e.g. *Edit "
+                                        "<Picture 1>: replace the coat with the one of <Picture 2>, "
+                                        "keep the face and the background unchanged.* The result "
+                                        "takes Ref 1's size unless **Output size from Settings** "
+                                        "below is ticked. Each reference adds about a thousand "
+                                        "tokens to the text and its own image tokens to the render: "
+                                        "an edit takes about twice the time of a plain render. Then "
+                                        "click **Edit** below.*")
                                     omni_check_btn2 = gr.Button("Check edit model availability",
                                                                 size="sm")
                                 with gr.Column(scale=2, min_width=300):
@@ -4982,7 +4960,7 @@ def build_ui():
                             # "Qwen-Image-Edit fast lazy load" LoRAs): applied on the EDIT
                             # pipe only, downloaded on the first selection. An ON/OFF box in
                             # Models > LoRA.
-                            with gr.Row(elem_classes="cz-omni-controls", equal_height=False):
+                            with gr.Row(elem_classes="cz-omni-controls", equal_height=False, visible=False):
                                 with gr.Column(scale=2, min_width=360):
                                     edit_lora_dd = gr.Dropdown(
                                         choices=_edit_lora_choices(), value="None",
@@ -5023,20 +5001,16 @@ def build_ui():
                                         value=_initial_edit_speed(),
                                         label="Edit speed",
                                         info="Stacks an acceleration LoRA and forces its step "
-                                             "count. None is declared for MOSS-Image editing, so "
+                                             "count. None is declared for MiniMax-H3-Image editing, so "
                                              "this stays hidden.")
                                 with gr.Column(scale=1, min_width=260):
                                     edit_speed_status = gr.Markdown("", elem_classes="cz-omni-status")
                             omni_size_cb = gr.Checkbox(
                                 value=bool(cz_pipeline.EDIT_SIZE_FROM_SETTINGS),
                                 label="Output size from Settings",
-                                info="Off = the result takes Ref 1's size and ratio (what the "
-                                     "Moss-Image-Edit LoRA was trained on: same-size pairs, the "
-                                     "texts held exact on the 5090). On = the Width / Height "
-                                     "and Aspect ratio of Settings are used instead: Ref 1 is "
-                                     "read at its own size and the model redraws it at the new "
-                                     "one, so texts and fine detail may hold less well. "
-                                     "Remembered.")
+                                info="Off = the result takes Ref 1's size and ratio. On = the "
+                                     "Width / Height and Aspect ratio of Settings are used "
+                                     "instead. Remembered.")
                             omni_edit_btn = gr.Button("Edit (Ref 1 + prompt -> image)",
                                                       variant="primary", elem_classes="cz-omni-edit-btn")
 
@@ -5130,12 +5104,13 @@ def build_ui():
                                                     "render time (6 around 1536, 8 at 2048), said in "
                                                     "the log.")
                         aspect = gr.Dropdown(list(ASPECT_RATIOS),
-                                             value=CONFIG.get("default_aspect_ratio", "1024 x 1024  (1:1)"),
+                                             value=(CONFIG.get("default_aspect_ratio")
+                                                    if CONFIG.get("default_aspect_ratio") in ASPECT_RATIOS
+                                                    else "4 Mpx  2048 x 2048  (1:1)"),
                                              label="Aspect ratio",
-                                             info="1 MP formats first, then 2K (MOSS-Image is "
-                                                  "validated from 1 to 2 Mpx). Width / Height below take any "
-                                                  "custom size, a multiple of 16, 256 to 2048 a side, "
-                                                  "ratio up to 6:1.")
+                                             info="4 Mpx first (fast), then 9 and 16 Mpx (the model's "
+                                                  "best range), then 1 Mpx drafts. Width / Height below take "
+                                                  "any custom size, a multiple of 32, 20 Mpx at most.")
                         force_ratio_cb = gr.Radio(
                             ["Off", "Crop to fit", "Extend (outpaint)"],
                             value=("Extend (outpaint)" if (cz_pipeline.FORCE_RATIO and
@@ -5148,17 +5123,22 @@ def build_ui():
                                  "missing bands are outpainted (nothing is lost). "
                                  "Off = keep the input's native ratio.")
                         with gr.Row():
-                            # 256 to 2048 a side: MOSS-Image's range (cz_moss.fit_size).
-                            width = gr.Slider(256, 2048, value=int(CONFIG.get("default_width", 1024)),
-                                              step=16, label="Width")
-                            height = gr.Slider(256, 2048, value=int(CONFIG.get("default_height", 1024)),
-                                               step=16, label="Height")
-                        gen_steps = gr.Slider(*GEN_STEPS_BOUNDS, value=int(CONFIG.get("default_gen_steps", 48)),
+                            # cz_engine.fit_size: multiples of 32, 20 Mpx at most.
+                            width = gr.Slider(512, cz_engine.MAX_SIDE, value=int(CONFIG.get("default_width", 2048)),
+                                              step=32, label="Width")
+                            height = gr.Slider(512, cz_engine.MAX_SIDE, value=int(CONFIG.get("default_height", 2048)),
+                                               step=32, label="Height")
+                        # Steps and guidance are fixed by the model (6 distilled steps, one
+                        # output head each, no CFG): the two sliders stay for the presets,
+                        # the XYZ and the metadata that read them, hidden and inert.
+                        gen_steps = gr.Slider(*GEN_STEPS_BOUNDS, value=6, visible=False,
                                               step=1, label="Generation steps (txt2img)")
+                        gr.Markdown("*MiniMax-H3-Image always runs **6 steps with no CFG** (distilled): "
+                                    "there is no steps, guidance, sampler or negative prompt setting.*")
                         with gr.Row():
-                            guidance = gr.Slider(*GUIDANCE_BOUNDS, value=float(CONFIG.get("default_guidance", 7.0)),
+                            guidance = gr.Slider(*GUIDANCE_BOUNDS, value=1.0, visible=False,
                                                  step=0.5, label="CFG guidance", scale=2,
-                                                 info="Classifier-free guidance (MOSS-Image: 3.0 "
+                                                 info="Classifier-free guidance (MiniMax-H3-Image: 3.0 "
                                                       "official, 3 to 6 advised; 1.0 = no negative "
                                                       "branch, twice as fast).")
                             # FLUX.3 runs its own FlowMatch Euler schedule (constant shift
@@ -5168,14 +5148,14 @@ def build_ui():
                             # and metadata read them) but are greyed out, and cz_pipeline
                             # ignores any other value with a log line.
                             sampler_dd = gr.Dropdown(
-                                list(SAMPLER_CHOICES), value="euler", interactive=False,
+                                list(SAMPLER_CHOICES), value="euler", interactive=False, visible=False,
                                 label="Sampler", scale=1,
-                                info="Not used on MOSS-Image: the model runs its own "
+                                info="Not used on MiniMax-H3-Image: the model runs its own "
                                      "flow-matching Euler sampler. Other choices are ignored.")
                             schedule_dd = gr.Dropdown(
-                                list(SCHEDULE_CHOICES), value="sgm_uniform", interactive=False,
+                                list(SCHEDULE_CHOICES), value="sgm_uniform", interactive=False, visible=False,
                                 label="Schedule", scale=1,
-                                info="Not used on MOSS-Image: its own shifted schedule, "
+                                info="Not used on MiniMax-H3-Image: its own shifted schedule, "
                                      "snapped to the training grid. Other choices are ignored.")
                         # set_sampler/set_schedule return a status: it is DISPLAYED
                         # instead of thrown away (otherwise Gradio warns "returned too many
@@ -5203,10 +5183,10 @@ def build_ui():
                         gr.Markdown("*Hover a style to preview it.*")
                         styles = gr.CheckboxGroup(list(STYLES), value=CONFIG.get("default_styles", []),
                                                   label="Styles (combinable)", elem_id="cz_styles")
-                        with gr.Accordion("Character catalog (MOSS-Image, 34,249 samples)", open=False):
+                        with gr.Accordion("Character catalog (MOSS-Image)", open=False, visible=False):
                             gr.Markdown(
-                                "The MOSS-Image Character Catalog (hide1 on Hugging Face): 33,935 "
-                                "characters and 314 styles rendered with MOSS-Image, each with a "
+                                "The MiniMax-H3-Image Character Catalog (hide1 on Hugging Face): 33,935 "
+                                "characters and 314 styles rendered with MiniMax-H3-Image, each with a "
                                 "reusable prompt, its tags and facets. Two tabs in the Asset Browser "
                                 "(Characters, Styles): search by name, copyright, hair, eyes, outfit; "
                                 "a click sends the prompt or the tags to the prompt box; the names "
@@ -5308,8 +5288,8 @@ def build_ui():
                                 "weights stay BF16, they just shuttle between RAM and GPU.\n\n"
                                 "- **auto** (default): at model load, measures the *free* VRAM (all processes "
                                 "counted) and picks `none` only when the model + activations provably fit; "
-                                "otherwise `model`/`sequential`. MOSS-Image is 10 GB of DiT plus a 17 GB text "
-                                "encoder (bf16); under 40 GB of VRAM `auto` picks crispz-moss's own `model` "
+                                "otherwise `model`/`sequential`. MiniMax-H3-Image is 10 GB of DiT plus a 17 GB text "
+                                "encoder (bf16); under 40 GB of VRAM `auto` picks crispz-minimax's own `model` "
                                 "offload, which keeps the DiT and the VAE on the card and moves only the "
                                 "text encoder (9.7 GB resident, 15 GB peak at 1024 once the prompt is "
                                 "cached, 27 GB while a new prompt is encoded, on an RTX 5090; the nf4 "
@@ -5333,7 +5313,7 @@ def build_ui():
                                 value=cz_pipeline.CHECKPOINTS_EXTRA_DIR,
                                 label="Extra checkpoints folder (optional)",
                                 placeholder="e.g. D:\\models\\MOSS",
-                                info="Merged into the checkpoint list above. Single-file MOSS-Image DiTs "
+                                info="Merged into the checkpoint list above. Single-file MiniMax-H3-Image DiTs "
                                      "in the ComfyUI / CivitAI layout (bf16, fp8, int8 ConvRot) load; "
                                      "the 4-bit builds are refused with the reason. Leave empty to disable.")
                             esrgan_dir_tb = gr.Textbox(value=cz_esrgan.ESRGAN_DIR,
@@ -5353,9 +5333,9 @@ def build_ui():
                                              "with a real CFG and a working negative prompt, "
                                              "three times slower.")
                                     precision_rb = gr.Radio(
-                                        list(cz_moss.PRECISIONS), value=cz_pipeline.PRECISION,
+                                        list(cz_engine.PRECISIONS), value=cz_pipeline.PRECISION,
                                         label="Text encoder precision", scale=2,
-                                        visible=len(cz_moss.PRECISIONS) > 1,
+                                        visible=len(cz_engine.PRECISIONS) > 1,
                                         info="The Qwen3.5-9B text encoder: bf16 (16.8 GB) or "
                                              "nf4 through bitsandbytes (~5.6 GB, not measured "
                                              "yet). The DiT is always bf16.")
@@ -5379,14 +5359,14 @@ def build_ui():
                                 transformer_tb = gr.Textbox(
                                     value="", scale=3,
                                     label="Transformer override (HF repo / diffusers folder)",
-                                    placeholder="HF repo or folder with a MOSS-Image transformer",
+                                    placeholder="HF repo or folder with a MiniMax-H3-Image transformer",
                                     info="For community models with an incomplete tokenizer: "
                                          "loads only the transformer, keeps base VAE/encoder.")
                                 with gr.Row():
                                     transformer_apply_btn = gr.Button("Apply override", size="sm",
                                                                       variant="secondary")
                             with gr.Column():
-                                # MOSS-Image reads the last hidden state of a Qwen3.5-9B: a
+                                # MiniMax-H3-Image reads the last hidden state of a Qwen3.5-9B: a
                                 # replacement of that size loads (a transformers repo or
                                 # folder, or a single ComfyUI / CivitAI file in bf16 or int8
                                 # ConvRot); cz_pipeline refuses another size by name.
@@ -5400,7 +5380,7 @@ def build_ui():
                                     te_refresh_btn = gr.Button("Refresh encoders", size="sm", scale=1)
                                 te_status = gr.Markdown(_te_hint())
 
-                        with gr.Accordion("\U0001F9E9 LoRA (combinable)", open=False):
+                        with gr.Accordion("\U0001F9E9 LoRA (combinable)", open=False, visible=False):   # no LoRA on this model yet
                             lora_dir_tb = gr.Textbox(value=cz_pipeline.LORAS_DIR, label="LoRA folder")
                             lora_extra_dirs_tb = gr.Textbox(
                                 value=";".join(cz_pipeline.LORAS_EXTRA_DIRS),
@@ -5456,7 +5436,7 @@ def build_ui():
                             with gr.Accordion("\U0001F50E Search CivitAI (download a LoRA)",
                                               open=False):
                                 gr.Markdown(
-                                    "*Search a LoRA by name on CivitAI. MOSS-Image versions come "
+                                    "*Search a LoRA by name on CivitAI. MiniMax-H3-Image versions come "
                                     "first (FLUX and Ideogram LoRAs do not load here). Download "
                                     "goes to the LoRA folder, with a SHA256 check + "
                                     "preview/trigger words fetched.*")
@@ -5504,7 +5484,7 @@ def build_ui():
                             wild_status = gr.Markdown("")
 
                         with gr.Accordion("\U0001F5BC️ Edit model (multi-reference)", open=False,
-                                          visible=omni_on):
+                                          visible=False):   # editing is native: nothing to choose
                             gr.Markdown("*The Edit (references) tab is served by the BASE model itself: "
                                         "FLUX.3 takes a list of reference images (cited as `<ref_image_N>` "
                                         "in the prompt), so multi-reference "

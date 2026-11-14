@@ -51,7 +51,7 @@ from cz_core import CONFIG, APP_VERSION, _log
 from prompt_variants import has_variants
 
 PROTOCOL = 1
-TOOL = "crispz-moss"
+TOOL = "crispz-minimax"
 # The op vocabulary of protocol v1: frozen, identical in every family
 # tool. czp accepts all of it on the command line so that an op THIS tool
 # does not implement still gets a JSON answer with exit code 3 - a machine
@@ -64,7 +64,7 @@ OPS = ("caps", "gen", "upscale", "edit", "inpaint")
 # it). Static on purpose: `caps` must answer without importing the pipeline
 # (torch). Krea 2 has no img2img / inpaint pipeline -> variation (upscale
 # with factor 1) and inpaint are refused with exit 3, never faked.
-# crispz-moss: MOSS-Image is text to image only; img2img and inpaint are EMULATED by
+# crispz-minimax: MiniMax-H3-Image is text to image only; img2img and inpaint are EMULATED by
 # cz_moss (lot 3: SDEdit on the tail of the native schedule, latent blending for the
 # mask, the crispz-ideogram technique). They work for every caller, and `caps` says they
 # are emulated (supports.emulated) so a caller can tell them from a native pipeline.
@@ -106,30 +106,16 @@ _FAST_ALIASES = {"off": "Off", "none": "Off", "auto": "Auto (model profile)",
 OMNI_SUPPORTED = True
 # klein serves multi-reference editing from the BASE pipeline (`image` takes a list of
 # PIL images): there is no separate edit repo to configure, so refs are ALWAYS available.
-OMNI_DEFAULT = (os.environ.get("MOSS_MODEL")
-                or "OpenMOSS-Team/MOSS-Image-SFT")
+OMNI_DEFAULT = (os.environ.get("MINIMAX_MODEL") or "MiniMaxAI/MiniMax-H3-Image")
 
-# klein-4B is step-wise distilled: diffusers ignores `guidance_scale` (measured
-# bit-identical renders from 1.0 to 8.0, tests/test_klein_guidance.py) and the
-# Flux2Klein* pipelines expose no `negative_prompt`. A spec carrying `negative` is
-# therefore honoured with a WARNING, never silently - house rule.
-# crispz-moss: MOSS-Image runs a real CFG with a real negative prompt (encoded by its
-# Qwen3.5 text encoder; empty by default, the user guide suggests a tag preset).
-SUPPORTS_NEGATIVE = True
+# crispz-minimax: MiniMax-H3-Image is distilled with its guidance baked in: no CFG, no
+# negative prompt. A spec carrying `negative` is honoured with a WARNING, never silently.
+SUPPORTS_NEGATIVE = False
 
 
 def _omni_configured():
-    """Reference editing is available when the Moss-Image-Edit LoRA is on disk (the
-    base pipeline edits through its reference prefix; the base weights alone cannot).
-    No config key: the Edit tab downloads the preset on first use."""
-    if not OMNI_SUPPORTED:
-        return False
-    try:
-        import cz_edit_loras
-        return bool(cz_edit_loras.edit_ready())
-    except Exception as e:
-        _log(f"edit LoRA lookup failed: {e}")
-        return False
+    """Reference editing is native to the model: available whenever the family has it."""
+    return bool(OMNI_SUPPORTED)
 
 
 def instance_url():
@@ -266,9 +252,9 @@ def caps_dict():
 
 
 def _cloud_caps():
-    """No cloud on crispz-moss: MOSS-Image has no hosted API and nothing leaves the
+    """No cloud on crispz-minimax: MiniMax-H3-Image has no hosted API and nothing leaves the
     machine. The field stays (family contract), always off."""
-    return {"enabled": False, "ops": [], "why": "no cloud function on crispz-moss"}
+    return {"enabled": False, "ops": [], "why": "no cloud function on crispz-minimax"}
 
 
 def _edit_lora_catalog():
@@ -498,12 +484,12 @@ def validate_spec(spec, op="gen"):
         if not 0.0 <= out["guidance"] <= 20.0:
             raise SpecError(f"'guidance' out of range (0-20): {out['guidance']}")
     # (crispz-klein warned here that guidance had no effect: true of a distilled model,
-    # false of MOSS-Image, a real CFG. Removed.)
+    # false of MiniMax-H3-Image, a real CFG. Removed.)
     refs = [str(r) for r in (spec.get("refs") or []) if str(r).strip()]
     # Without the edit LoRA on disk, refs are dropped WITH a warning that says how to
     # get it (and where native reference editing lives: crispz-flux3).
     if refs and not _omni_configured():
-        warnings.append(f"{len(refs)} ref(s) ignored: MOSS-Image edits from references "
+        warnings.append(f"{len(refs)} ref(s) ignored: MiniMax-H3-Image edits from references "
                         f"only with the Moss-Image-Edit LoRA, not on disk (Edit tab "
                         f"preset); native reference editing: crispz-flux3")
         refs = []

@@ -37,8 +37,8 @@ def offload_reco(vram_gb):
     """The offload mode advised according to the VRAM.
 
     Landmarks measured on this project (RTX 5090, 2026-11-03 to 05, see CLAUDE.md):
-    MOSS-Image weighs 27.2 GB in bf16 (DiT 10.2 + Qwen3.5-9B encoder 16.8 + VAE 0.25).
-    'model' here is crispz-moss's encoder-only offload: the DiT and the VAE stay on the
+    MiniMax-H3-Image weighs 27.2 GB in bf16 (DiT 10.2 + Qwen3.5-9B encoder 16.8 + VAE 0.25).
+    'model' here is crispz-minimax's encoder-only offload: the DiT and the VAE stay on the
     card (9.7 GB resident), the encoder visits it for a new prompt only, the DiT being
     parked in RAM meanwhile: 15 to 16 GB peak on a cached prompt, 19 to 23.5 GB on a
     new one (the encoder plus its temporaries, which grow with the prompt length).
@@ -47,7 +47,7 @@ def offload_reco(vram_gb):
     submodule on every forward: slow, for the small cards only.
     """
     if vram_gb >= 40:
-        return ("none", "MOSS-Image bf16 fits whole (27.2 GB of weights plus the "
+        return ("none", "MiniMax-H3-Image bf16 fits whole (27.2 GB of weights plus the "
                         "activations); 'auto' picks it above 40 GB.")
     if vram_gb >= 24:
         return ("auto", "encoder-only 'model' offload (what 'auto' picks under 40 GB): "

@@ -1,4 +1,4 @@
-"""crispz-moss - core foundation (config, paths, logging, device).
+"""crispz-minimax - core foundation (config, paths, logging, device).
 
 Pulled out of app.py. No dependency on the rest of the project (app.py and the other
 modules import cz_core, never the other way round). It holds:
@@ -112,17 +112,14 @@ DEFAULT_OUTPUT_FORMAT = CONFIG.get("default_output_format", DEFAULT_OUTPUT_FORMA
 # card) BEFORE 'flux-3-image-klein' (the flow map: 16 steps, no CFG, guidance left at 1.0
 # so the UI does not display a value suggesting an active CFG). 'flux-3' / 'flux3' catch
 # the mirrors and community files (unsloth/flux-3-image-klein-GGUF, flux3-xxx.safetensors).
-# crispz-moss: 'moss' first (50 steps, CFG 3.0, the official MOSS-Image settings; the
+# crispz-minimax: 'moss' first (50 steps, CFG 3.0, the official MiniMax-H3-Image settings; the
 # Base and SFT checkpoints share them). The FLUX.3 entries stay for the family files a
 # shared models folder may hold; they never apply to the MOSS base repo.
 MODEL_PROFILES = CONFIG.get("model_profiles") or {
-    "moss": {"steps": 50, "guidance": 3.0},
-    "flux-3-image-klein-base": {"steps": 50, "guidance": 3.5},
-    "flux-3-image-klein": {"steps": 16, "guidance": 1.0},
-    "flux-3": {"steps": 16, "guidance": 1.0},
-    "flux3": {"steps": 16, "guidance": 1.0},
+    "minimax": {"steps": 6, "guidance": 1.0},
 }
-DEFAULT_MODEL_PROFILE = CONFIG.get("default_model_profile") or {"steps": 50, "guidance": 3.0}
+# crispz-minimax: one model, one setting (6 distilled steps, no CFG).
+DEFAULT_MODEL_PROFILE = CONFIG.get("default_model_profile") or {"steps": 6, "guidance": 1.0}
 
 # crispz-klein's profile keys, as every config.txt copied from its config-sample.txt
 # carries them. 'klein' is a substring of 'flux-3-image-klein': through such a config the
@@ -432,7 +429,7 @@ def download_with_progress(url, dst, label=None, block=65536, timeout=30):
     label = label or os.path.basename(dst)
     tmp = dst + ".tmp"
     os.makedirs(os.path.dirname(os.path.abspath(dst)), exist_ok=True)
-    req = urllib.request.Request(url, headers={"User-Agent": "crispz-moss"})
+    req = urllib.request.Request(url, headers={"User-Agent": "crispz-minimax"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r, open(tmp, "wb") as f:
             total = int(r.headers.get("Content-Length") or 0)

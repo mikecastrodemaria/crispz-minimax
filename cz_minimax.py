@@ -576,6 +576,43 @@ def default_file(kind, token=None):
 
 
 # --------------------------------------------------------------------------------------
+# Live preview
+# --------------------------------------------------------------------------------------
+# Normalized latents (24 channels, one per 16x16 pixels) -> RGB in [-1, 1]: a least-squares
+# fit on six renders (tools/minimax_fit_preview.py), mean error 7.5 on 255.
+LATENT_RGB = [
+    [0.05682, -0.11963, -0.13233], [-0.07727, 0.03948, -0.03811], [0.49400, 0.38194, 0.21002],
+    [0.14443, 0.02061, -0.35107], [0.04266, 0.15657, -0.16204], [0.06919, 0.08296, -0.11452],
+    [-0.00794, -0.02957, -0.00393], [0.00851, -0.00877, -0.02126], [-0.00256, -0.00827, -0.00077],
+    [0.24179, 0.08177, 0.16398], [0.02470, 0.03265, 0.06386], [-0.06669, -0.02995, 0.03216],
+    [0.00238, -0.00943, 0.02870], [-0.01355, 0.01240, -0.00778], [-0.01929, -0.00289, 0.02597],
+    [0.01796, 0.00368, -0.02605], [-0.00121, 0.01329, -0.00337], [-0.00823, -0.00158, 0.01552],
+    [0.02033, 0.01874, -0.00362], [0.01579, -0.01368, 0.00648], [-0.00061, 0.00801, -0.00395],
+    [-0.01021, -0.00595, -0.00096], [-0.01196, 0.01602, 0.00136], [0.00462, 0.00640, 0.00809],
+]
+LATENT_RGB_BIAS = [0.12912, 0.08993, 0.02948]
+
+
+def latent_preview(latents, max_side=512):
+    """(B, 24, h, w) normalized latents -> a small PIL image, or None when the shape is not
+    this model's. Runs where the latents are; only the uint8 result crosses back."""
+    from PIL import Image
+    z = latents[0] if latents.dim() == 4 else latents
+    if z.dim() != 3 or z.shape[0] != len(LATENT_RGB):
+        return None
+    z = z.detach().float()
+    m = torch.tensor(LATENT_RGB, dtype=z.dtype, device=z.device)
+    b = torch.tensor(LATENT_RGB_BIAS, dtype=z.dtype, device=z.device)
+    rgb = (z.permute(1, 2, 0) @ m + b).clamp(-1.0, 1.0).add(1.0).mul(127.5).round().byte().cpu().numpy()
+    img = Image.fromarray(rgb, mode="RGB")
+    side = max(img.size)
+    if side < max_side:
+        k = max_side / float(side)
+        img = img.resize((max(1, int(img.width * k)), max(1, int(img.height * k))), Image.BILINEAR)
+    return img
+
+
+# --------------------------------------------------------------------------------------
 # The block chains
 # --------------------------------------------------------------------------------------
 def _make_step_hook():

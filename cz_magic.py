@@ -1,13 +1,13 @@
-"""crispz-moss - magic prompt: a plain idea -> a MOSS-Image layout draft (lot 2).
+"""crispz-minimax - magic prompt: a plain idea -> a MiniMax-H3-Image layout draft (lot 2).
 
 Two engines, both on this machine (`magic_prompt_engine`):
 
   ollama   (default) a local Ollama model (`magic_prompt_ollama_model`, else the Improve
            model, else the first installed) with a system prompt adapted from the official
-           MOSS-Image prompt-enhancer skill, and the draft schema passed as Ollama's
+           MiniMax-H3-Image prompt-enhancer skill, and the draft schema passed as Ollama's
            structured-output `format` (Ollama >= 0.5), so the answer is JSON of the right
            shape. Nothing leaves the machine (the Ollama URL is logged on every call).
-  local    the Qwen3.5-9B text encoder already loaded for MOSS-Image, made generative
+  local    the Qwen3.5-9B text encoder already loaded for MiniMax-H3-Image, made generative
            with its own LM head (downloaded once from Qwen/Qwen3.5-9B, ~2 GB, the one
            tensor only). No second model in VRAM. JSON constrained by `outlines` when
            installed, said once when it is not.
@@ -60,7 +60,7 @@ def visible_engines():
 
 
 # --- The brief the LLM gets (adapted from skills/moss-image-prompt-enhancer, Apache 2.0) -
-SYSTEM = """You are a prompt enhancer for MOSS-Image, a text-to-image model that renders text exactly and places elements where a layout says. Turn the user's idea into a LAYOUT DRAFT: one JSON object and nothing else.
+SYSTEM = """You are a prompt enhancer for MiniMax-H3-Image, a text-to-image model that renders text exactly and places elements where a layout says. Turn the user's idea into a LAYOUT DRAFT: one JSON object and nothing else.
 
 Schema (every field below, no other):
 {"width": W, "height": H, "bbox_coord_space": "abs", "bbox_format": "xyxy",
@@ -267,7 +267,7 @@ def expand(idea, width, height, seed=None, which=None, model=None):
     return text, warnings, which
 
 
-DESCRIBE_SYSTEM = """You describe an image as a MOSS-Image LAYOUT DRAFT that a renderer could use to recreate it. Output ONE JSON object and nothing else:
+DESCRIBE_SYSTEM = """You describe an image as a MiniMax-H3-Image LAYOUT DRAFT that a renderer could use to recreate it. Output ONE JSON object and nothing else:
 {"summary": {"meta": [...], "canvas": "single", "caption": "...", "palette": ["#RRGGBB"]},
  "items": [{"label": "text", "caption": "...", "text": "VERBATIM", "bbox": [x1, y1, x2, y2]},
            {"label": "object", "caption": "...", "bbox": [x1, y1, x2, y2]}]}

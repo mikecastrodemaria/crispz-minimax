@@ -20,7 +20,7 @@ set PYTHONUTF8=1
 
 REM The symbol expected for this model family. The ONLY line that differs between
 REM crispz-studio (ZImage), crispz-krea2 (Krea2), crispz-qwen-edit (Qwen), crispz-klein
-REM (FLUX.2), crispz-flux3 (FLUX.3) and crispz-moss: MOSS-Image's pipeline is vendored
+REM (FLUX.2), crispz-flux3 (FLUX.3) and crispz-minimax: MiniMax-H3-Image's pipeline is vendored
 REM (third_party\moss_image), what pins the stack is its Qwen3.5-9B text encoder in
 REM transformers (5.21 or later).
 set CHECK_MODULE=transformers
@@ -192,7 +192,7 @@ echo Installing !REMBG_PIN! ^(after Pillow 13: rembg wants pillow^>=12.1, gradio
 if errorlevel 1 echo [WARN] rembg install failed -^> the Remove BG tab stays off.
 echo.
 
-REM 6) Check that transformers exposes the model family (the Qwen3.5 encoder MOSS-Image reads)
+REM 6) Check that transformers exposes the model family (the Qwen3.5 encoder MiniMax-H3-Image reads)
 !RUNPY! -c "from !CHECK_MODULE! import !CHECK_PIPE!; print('!CHECK_PIPE! OK')"
 if errorlevel 1 (
     echo [ERROR] transformers does not contain !CHECK_PIPE!.

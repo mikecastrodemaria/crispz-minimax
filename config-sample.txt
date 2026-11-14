@@ -1,5 +1,5 @@
 {
-    "_hf_token_help": "Hugging Face token, OPTIONAL: the MOSS-Image repos are public (Apache 2.0, no licence click). A READ token (https://huggingface.co/settings/tokens) only raises the download rate limits or opens a private mirror; 'hf auth login' works too. Env HF_TOKEN also works. config.txt is gitignored -> never commit your token.",
+    "_hf_token_help": "Hugging Face token, OPTIONAL: the MiniMax-H3-Image repos are public (Apache 2.0, no licence click). A READ token (https://huggingface.co/settings/tokens) only raises the download rate limits or opens a private mirror; 'hf auth login' works too. Env HF_TOKEN also works. config.txt is gitignored -> never commit your token.",
     "hf_token": "",
     "ollama_url": "http://127.0.0.1:11434",
     "_ollama_describe_prompt_help": "Empty = Describe uses the style picked in Prompt AI (Describe style + Length). Any text here adds a 'Custom (config.txt)' style. The pre-1.36 tag instruction counts as empty.",
@@ -59,64 +59,40 @@
         "every_n_steps": 1,
         "max_side": 512
     },
-    "_live_preview_help": "Show the image as it forms, during the denoise (Fooocus-style), in the Result gallery itself, where the finished image then replaces it. FLUX.2 hands its latents packed (128 channels, one token per 16x16 block) and they are projected straight to RGB through a 128x3 matrix fitted against THIS VAE -- a matmul on the token grid, where a real VAE decode would cost 0.2-0.5 s a step. MOSS-Image shares that VAE and packs its tokens in the same order, so the same matrix applies (error 35 on 255 at the last step, measured on the 5090). It is an approximation (R2 0.88): the composition and the broad colours are right, the fine detail is not. every_n_steps=2 or 3 refreshes less often, max_side caps the image sent to the browser. enabled=false removes the whole thing: no callback on the denoise, no frames, zero cost. Advanced > Generation has the same switch, applied live.",
+    "_live_preview_help": "Show the image as it forms, during the denoise (Fooocus-style), in the Result gallery itself, where the finished image then replaces it. FLUX.2 hands its latents packed (128 channels, one token per 16x16 block) and they are projected straight to RGB through a 128x3 matrix fitted against THIS VAE -- a matmul on the token grid, where a real VAE decode would cost 0.2-0.5 s a step. MiniMax-H3-Image shares that VAE and packs its tokens in the same order, so the same matrix applies (error 35 on 255 at the last step, measured on the 5090). It is an approximation (R2 0.88): the composition and the broad colours are right, the fine detail is not. every_n_steps=2 or 3 refreshes less often, max_side caps the image sent to the browser. enabled=false removes the whole thing: no callback on the denoise, no frames, zero cost. Advanced > Generation has the same switch, applied live.",
     "caption_model": "blip-large",
     "_caption_model_help": "Auto-describe model: blip-large (default, local) | blip-base | ollama:<vision model> (listed in Prompt AI once Ollama is detected; blip-large takes over if Ollama fails)",
-    "_performance_presets_help": "name -> [steps, guidance] or [steps, guidance, lora]: a file of the LoRA folders, or the adapter name of a draft preset ('moss-dmd-8-steps') fetched from the hub once into loras/_hf-edit. MOSS-Image: 50 steps and CFG 3.0 (the official settings; 3 to 6 advised, raise it for short prompts). Draft (12 steps) is a quick look on the base model (measured on the 5090, bench/lot3: the texts hold at 12 steps, details may move; 25 s instead of 85 for a 1.9 Mpx poster). Draft (8 steps, DMD LoRA) ties the lodestones 8-step DMD adapter (Apache 2.0, 1.2 GB) to slot 1 at CFG 1: one DiT pass per step, about 8 to 10 s for the same poster, texts exact on the 5090 (bench/lot4); the LoRA leaves slot 1 again with another preset. The DMD author's full recipe also swaps the time embedding and samples with its own loop: the LoRA alone is used here, and it held on images. Draft (4 steps, Turbo LoRA) and Draft (3 steps, Turbo LoRA) tie akhaliq's Euler-native Turbo adapters (Apache 2.0, 1.2 GB each, kohya keys, warm-started from the DMD) at CFG 1 on the stock scheduler (its 4-step anchors are exactly our timesteps 1000 / 910 / 717 / 24); kept unmerged in fp32 as the author asks. Trained at 1024x1024 only: above that the step count is raised at render time (6 around 1536, 8 at 2048, the author's table; the 3-step was not measured by him above 1 Mpx and gets the same rule), said in the log. The 3-step is the draft tier (text holds, subjects stay single), the 4-step the author's final; above 1024 a long descriptive prompt holds much better than a short one.",
+    "_performance_presets_help": "name -> [steps, guidance]. MiniMax-H3-Image is distilled to exactly 6 steps with no CFG: one preset, and the engine ignores any other value (said in the log).",
     "_performance_presets_merge_help": "true (default): the app's own presets missing from your performance_presets are added after yours, so a config.txt copied from an older sample keeps showing the presets added since (said in the log). false: your list is the whole list.",
     "performance_presets_merge": true,
     "performance_presets": {
-        "MOSS (50 steps)": [
-            50,
-            3.0
-        ],
-        "Draft (12 steps)": [
-            12,
-            3.0
-        ],
-        "Draft (8 steps, DMD LoRA)": [
-            8,
-            1.0,
-            "moss-dmd-8-steps"
-        ],
-        "Draft (4 steps, Turbo LoRA)": [
-            4,
-            1.0,
-            "moss-turbo-4-steps"
-        ],
-        "Draft (3 steps, Turbo LoRA)": [
-            3,
-            1.0,
-            "moss-turbo-3-steps"
+        "MiniMax (6 steps)": [
+            6,
+            1.0
         ]
     },
-    "_magic_prompt_engine_help": "Magic prompt (plain idea -> MOSS-Image layout draft): 'ollama' = a local Ollama model with the official prompt-enhancer brief and the draft schema as Ollama's structured output (default); 'local' = the loaded Qwen3.5-9B text encoder made generative with its own LM head (Qwen/Qwen3.5-9B, ~2 GB downloaded once into cache/moss/), JSON constrained by outlines when installed. Both run on this machine.",
+    "_magic_prompt_engine_help": "Magic prompt (plain idea -> MiniMax-H3-Image layout draft): 'ollama' = a local Ollama model with the official prompt-enhancer brief and the draft schema as Ollama's structured output (default); 'local' = the loaded Qwen3.5-9B text encoder made generative with its own LM head (Qwen/Qwen3.5-9B, ~2 GB downloaded once into cache/moss/), JSON constrained by outlines when installed. Both run on this machine.",
     "magic_prompt_engine": "ollama",
     "_magic_prompt_ollama_model_help": "Ollama model for the magic prompt; empty = the Improve model, else the first installed one. A Qwen3.5 or Qwen3 model of 8B and up gives the best layouts.",
     "magic_prompt_ollama_model": "",
     "_magic_prompt_temperature_help": "Sampling temperature of the Ollama magic prompt.",
     "magic_prompt_temperature": 0.7,
-    "_crispz_flux3_dir_help": "The crispz-flux3 install folder (e.g. D:\\Github\\crispz-flux3), for the Edit in crispz-flux3 tab: the image and the instruction are handed to its protocol v1 CLI on this machine (its running app when there is one, otherwise its own process after crispz-moss frees its VRAM). Empty = the tab says how to set it. Env CRISPZ_FLUX3_DIR. Also settable in the tab.",
+    "_crispz_flux3_dir_help": "The crispz-flux3 install folder (e.g. D:\\Github\\crispz-flux3), for the Edit in crispz-flux3 tab: the image and the instruction are handed to its protocol v1 CLI on this machine (its running app when there is one, otherwise its own process after crispz-minimax frees its VRAM). Empty = the tab says how to set it. Env CRISPZ_FLUX3_DIR. Also settable in the tab.",
     "crispz_flux3_dir": "",
     "_crispz_ideogram_dir_help": "The crispz-ideogram install folder (e.g. D:\\Github\\crispz-ideogram), for the Compare in crispz-ideogram tab: the current prompt (a MOSS layout translated to the Ideogram 4 caption schema) is rendered by Ideogram 4 at the same size through its protocol v1 CLI on this machine, as an A/B. Ideogram 4 is non-commercial: a comparison, never a deliverable. Empty = the tab says how to set it. Env CRISPZ_IDEOGRAM_DIR. Also settable in the tab.",
     "crispz_ideogram_dir": "",
-    "_moss_base_repos_help": "The MOSS-Image repos offered in the Models menu: HF repo ids or local diffusers folders. SFT (the default) for general use, Base for LoRA work and a rawer look. The first is the default.",
-    "moss_base_repos": [
-        "OpenMOSS-Team/MOSS-Image-SFT",
-        "OpenMOSS-Team/MOSS-Image-Base"
-    ],
-    "_model_profiles_help": "Auto steps/guidance when a model is selected, matched by substring on the name (FIRST match wins, in order). 'moss' covers the official repos, their mirrors and the CivitAI single files (mossImage_*, dirtyMoss_*).",
+    "_model_profiles_help": "Auto steps/guidance when a model is selected, matched by substring on the name. One model here: 6 steps, guidance 1.0 (no CFG).",
     "model_profiles": {
-        "moss": {
-            "steps": 50,
-            "guidance": 3.0
+        "minimax": {
+            "steps": 6,
+            "guidance": 1.0
         }
     },
     "default_model_profile": {
-        "steps": 50,
-        "guidance": 3.0
+        "steps": 6,
+        "guidance": 1.0
     },
-    "_default_loras_help": "LoRAs applied at startup (in loras_dir). Names or [name, weight]. Empty = none. MOSS-Image LoRAs only (kohya, peft, moss-edit-lora and ComfyUI diff layouts, the fused qkv split; applied hot on the DiT by crispz-moss's own loader, keys that match nothing are counted in the log); a control LoRA that replaces a layer is refused by name, a FLUX or Ideogram LoRA with its reason (different layers) and the studio that runs it.",
+    "_default_loras_help": "LoRAs applied at startup (in loras_dir). Names or [name, weight]. Empty = none. MiniMax-H3-Image LoRAs only (kohya, peft, moss-edit-lora and ComfyUI diff layouts, the fused qkv split; applied hot on the DiT by crispz-minimax's own loader, keys that match nothing are counted in the log); a control LoRA that replaces a layer is refused by name, a FLUX or Ideogram LoRA with its reason (different layers) and the studio that runs it.",
     "default_loras": [],
     "_edit_loras_help": "Extra edit LoRA presets for the Edit (references) tab: {name: {repo, weights, prompt, weight}}. The built-in 'Moss-Image-Edit' preset (Comfy-Org/MOSS-Image loras/moss_image_edit_lora_rank_64_bf16, the chinoll/Moss-Image-Edit weights, NO licence stated by its author) is applied to every edit: MOSS-Image edits only through its reference prefix. A LoRA declared here is applied on top.",
     "edit_loras": {},
@@ -124,12 +100,12 @@
     "edit_loras_dir": "",
     "_edit_loras_enabled_help": "Initial state of the 'Edit LoRAs' checkbox (Models > LoRA). Off = the chosen preset is kept but not applied (quick with/without comparison).",
     "edit_loras_enabled": true,
-    "_default_guidance_help": "MOSS-Image: the CFG scale (3.0 official, 3 to 6 advised; raise it for short prompts). 1.0 skips the negative branch (one DiT forward a step instead of two). The negative prompt acts.",
+    "_default_guidance_help": "MiniMax-H3-Image: the CFG scale (3.0 official, 3 to 6 advised; raise it for short prompts). 1.0 skips the negative branch (one DiT forward a step instead of two). The negative prompt acts.",
     "_default_refine_help": "Upscale/refine pass OFF by default (txt2img only = fast startup). NB: the diffusion refine needs a non-quantized base; with a GGUF model it is skipped/limited. Enable per-run via the Upscale checkbox.",
     "default_prompt": "",
     "default_negative_prompt": "",
     "default_styles": [],
-    "default_aspect_ratio": "1024 x 1024  (1:1)",
+    "default_aspect_ratio": "4 Mpx  2048 x 2048  (1:1)",
     "_force_upscale_ratio_help": "Fooocus-style: force a ratio on Upscale/img2img on the INPUT ('W:H' or 'WxH', e.g. '13:19' or '832x1216'). Empty = keep the input's native ratio. Also toggled per-run by the 'Force aspect ratio' radio (uses the Aspect ratio dropdown).",
     "force_upscale_ratio": "",
     "_force_ratio_mode_help": "How the forced ratio is reached: 'crop' = centre-crop the input to fit (edges are lost), 'extend' = outpaint the missing bands (nothing is lost, the added bands are generated).",
@@ -138,11 +114,11 @@
     "edit_size_from_settings": false,
     "_force_ratio_extend_denoise_help": "Extend mode only: after outpainting the bands, one LIGHT img2img pass over the extended image blends the band seams - only the bands + a feathered transition margin are composited from it, the original centre stays untouched. 0 = off. 0.15-0.30 sensible.",
     "force_ratio_extend_denoise": 0.22,
-    "default_performance": "MOSS (50 steps)",
-    "default_width": 1024,
-    "default_height": 1024,
-    "default_gen_steps": 50,
-    "default_guidance": 3.0,
+    "default_performance": "MiniMax (6 steps)",
+    "default_width": 2048,
+    "default_height": 2048,
+    "default_gen_steps": 6,
+    "default_guidance": 1.0,
     "default_sampler": "euler",
     "default_schedule": "sgm_uniform",
     "default_image_number": 1,
@@ -164,16 +140,16 @@
     "default_overlap": 32,
     "default_refine_tile": 0,
     "default_refine_overlap": 64,
-    "_text_encoder_help": "Replacement Qwen3.5-9B text encoder: a transformers folder or HF repo ('owner/repo' or 'owner/repo/subfolder', e.g. an abliterated fine-tune), or a ComfyUI / CivitAI single file (qwen3.5_9b bf16 or int8 ConvRot; the int4 GPTQ file is refused by name). Empty = the base repo's own encoder. Env MOSS_TEXT_ENCODER. Also settable in Models > Text encoder.",
+    "_text_encoder_help": "Replacement text encoder: a GGUF FILE of the Qwen3-VL-32B encoder cut to its 50 layers, with transformers tensor names (unsloth/MiniMax-H3-GGUF). Empty = the first one found in ./checkpoints, else qwen3vl_32b_minimax_h3-Q4_K_M.gguf downloaded into the Hugging Face cache (18.2 GB).",
     "text_encoder": "",
     "_text_encoders_dir_help": "Folder scanned for the Text encoder list (one sub-folder per encoder, each with a config.json). Empty = 'text_encoders', 'text_encoder' or 'clip' next to the checkpoints folder or its parent.",
     "text_encoders_dir": "",
     "trim_text_encoder": true,
-    "_trim_text_encoder_help": "Drop the text-encoder blocks the pipeline never reads. Nothing to drop on MOSS-Image: it reads the last hidden state of Qwen3.5-9B and the encoder is loaded without its lm_head already; a log line says so at load time. Set it to false to silence that line.",
+    "_trim_text_encoder_help": "Drop the text-encoder blocks the pipeline never reads. Nothing to drop on MiniMax-H3-Image: it reads the last hidden state of Qwen3.5-9B and the encoder is loaded without its lm_head already; a log line says so at load time. Set it to false to silence that line.",
     "vram_headroom_gb": 4.0,
     "_vram_headroom_gb_help": "VRAM kept free for what is not a weight: CUDA context, diffusion activations, VAE decode. Absolute rather than a percentage, because that cost barely depends on card size. If the base weights plus this margin exceed the card, CPU offload is forced. Lower it only with a measurement in hand: on Windows an over-budget load does not fail, it spills into shared memory (measured: 32.3 GB resident on a 31.8 GB card, 0.0 GB free, no exception) and rendering collapses silently.",
     "default_cpu_offload": "auto",
-    "_model_footprint_gb_help": "Overrides the model size in GB that the `auto` CPU offload weighs against the free VRAM. 0 = estimated from the model itself (MOSS-Image bf16: about 25 GB of weights, 9.7 GB resident with the encoder-only 'model' offload; to be measured on the RTX 5090). Set it when that estimate is wrong for what you run.",
+    "_model_footprint_gb_help": "Overrides the model size in GB that the `auto` CPU offload weighs against the free VRAM. 0 = estimated from the model itself (MiniMax-H3-Image bf16: about 25 GB of weights, 9.7 GB resident with the encoder-only 'model' offload; to be measured on the RTX 5090). Set it when that estimate is wrong for what you run.",
     "model_footprint_gb": 0,
     "attention_slice_above": 1664,
     "auto_refine_tile_above": 1664,
@@ -187,7 +163,7 @@
     "checkpoints_extra_dir": "",
     "_zimage_omni_model_help": "Edit / multi-reference (Omni) model. Unused on crispz-moss: editing runs in the base model with the Moss-Image-Edit LoRA, a value here is ignored with a warning. The field stays so every client of the family reads the same one.",
     "zimage_omni_model": "",
-    "_edit_fast_help": "Initial 'Edit speed'. Unused on crispz-moss (no edit pipeline, no Lightning LoRA): Off is the only value and the UI hides the control; the field stays for family parity (on crispz-qwen-edit it also takes Lightning 4 / 8 steps).",
+    "_edit_fast_help": "Initial 'Edit speed'. Unused on crispz-minimax (no edit pipeline, no Lightning LoRA): Off is the only value and the UI hides the control; the field stays for family parity (on crispz-qwen-edit it also takes Lightning 4 / 8 steps).",
     "edit_fast": "Off",
     "loras_dir": "",
     "_loras_extra_dirs_help": "Extra LoRA folders merged with loras_dir (list, or 'a;b'). Same file name: loras_dir wins. Edit presets and Lightning LoRAs already present there are reused instead of downloaded.",
@@ -199,7 +175,7 @@
     "lora_weight_max": 2.0,
     "_lora_weight_range_help": "Min/max of the LoRA 'Weight' sliders (Models > LoRA). NEGATIVE weights are allowed and useful: a LoRA applied at a negative weight pushes AWAY from what it was trained on (e.g. a 'skinny slider' LoRA at -1 gives the opposite effect, an 'age slider' at -0.5 makes the subject younger/older the other way). 0 = LoRA has no effect. Typical range: -2..2; beyond ~±1.5 most LoRAs burn/deform the image. Set lora_weight_min to 0 if you never want negatives. If the values are not numbers, or min >= max, the app falls back to -2..2 and logs it.",
     "lora_slots": 3,
-    "_detailer_steps_help": "Steps for ONE face/hand refine pass. 0 (default) = follow the model profile (MOSS-Image: 50), never above the Refine steps slider. A positive integer forces that value; -1 keeps whatever the Refine steps slider says.",
+    "_detailer_steps_help": "Steps for ONE face/hand refine pass. 0 (default) = follow the model profile (MiniMax-H3-Image: 50), never above the Refine steps slider. A positive integer forces that value; -1 keeps whatever the Refine steps slider says.",
     "detailer_steps": 0,
     "_hand_detailer_help": "Tick '🖐 Detail hands' by default: after each render, detected hands are re-refined at high resolution like faces are. At run time it needs only onnxruntime plus the detector exported once to cache/*.onnx; 'ultralytics' is required solely for that export, which runs in a subprocess (it must never live in the diffusion process - see cz_detailer._ensure_hand_onnx). If you would rather not install ultralytics here, export the .onnx from a throwaway venv and drop it in cache/: the app picks it up.",
     "hand_detailer": false,
@@ -258,7 +234,7 @@
     "_gguf_arch_help": "Architectures accepted for .gguf checkpoints, read from the file header (general.architecture). Comma-separated. Only matching files are listed in the checkpoint dropdown; the rest are skipped at startup with a reason, instead of failing after a long load. NB: the label does NOT distinguish FLUX.1 from FLUX.2 (both may say \"flux\"), so the TENSOR LAYOUT is the real judge: a FLUX.1 city96 GGUF is rejected as 'foreign' even though its label passes. Known values: \"flux2\"/\"flux\", \"qwen_image\", \"krea2\" (its OWN architecture, needs ComfyUI, not loadable here), plus llama/gemma3/... for LLM GGUFs. A GGUF whose header cannot be read is kept (never discard a valid model on a doubt).",
     "civitai_api_key": "",
     "auth": "",
-    "_auth_help": "Login page for the UI. Empty = no login (fine on localhost). Set to \"user:password\" (several accounts: \"a:pw1,b:pw2\") BEFORE exposing crispz-moss on your LAN or through a tunnel (cloudflared etc.) - otherwise anyone with the URL can generate images and browse/delete your outputs. Also settable via --auth or the CRISPZ_AUTH env var.",
+    "_auth_help": "Login page for the UI. Empty = no login (fine on localhost). Set to \"user:password\" (several accounts: \"a:pw1,b:pw2\") BEFORE exposing crispz-minimax on your LAN or through a tunnel (cloudflared etc.) - otherwise anyone with the URL can generate images and browse/delete your outputs. Also settable via --auth or the CRISPZ_AUTH env var.",
     "civitai_batch": {
         "enabled": true,
         "sleep": 0.5,
@@ -287,16 +263,9 @@
     "convert_device": "auto",
     "_convert_device_help": "Where the one-time dequantization math of FP8/INT8 checkpoints runs. 'auto' (default) = GPU if available (tensor-by-tensor, a few hundred MB of VRAM at peak - the CPU path is memory-bandwidth-bound and was measured at ~9 min on a 12.9B INT8 in crispz-krea2), 'cpu' = never touch the GPU (pick this if you convert while rendering elsewhere).",
     "log_level": "info",
-    "_default_negative_prompt_help": "Negative prompt the Generate tab starts with. MOSS-Image runs a real CFG, so it acts. The user guide suggests: 'nsfw, worst quality, bad anatomy, watermark, jpeg artifact'. Empty = the official default.",
-    "_omni_help": "MOSS-Image has no edit model: the Edit (references) tab runs the base model with the Moss-Image-Edit LoRA (reference prefix, lot 4b); native multi-reference editing runs in crispz-flux3 (Edit in crispz-flux3 tab). The keys 'zimage_omni_model' / 'zimage_omni_base' of crispz-qwen-edit are gone on purpose - do not re-add them at merge time.",
-    "moss_model": "OpenMOSS-Team/MOSS-Image-SFT",
-    "_moss_model_help": "Base repo (HF) or a local diffusers folder of MOSS-Image: OpenMOSS-Team/MOSS-Image-SFT (default, general use) or OpenMOSS-Team/MOSS-Image-Base (LoRA base, rawer). Apache 2.0, public, about 27 GB on disk (DiT 10.2 + Qwen3.5-9B encoder 16.8 + VAE 0.25). Env MOSS_MODEL. Ideogram and FLUX files are refused (they run in crispz-ideogram / crispz-flux3 / crispz-klein).",
-    "moss_transformer": "",
-    "_moss_transformer_help": "A single-file MOSS-Image DiT (ComfyUI / CivitAI layout: the Comfy-Org repack, CivitAI's 'MOSS Image' and merges such as Dirty-Moss) in bf16 or int8 ConvRot (dequantized to bf16 in RAM at load time, the saving is disk only); the 4-bit builds are refused by name. The VAE and the text encoder still come from moss_model. Empty = the repo's own DiT. Env MOSS_TRANSFORMER.",
-    "moss_encode_swap": true,
-    "_moss_encode_swap_help": "Encoder-only offload ('model' / 'auto' under 40 GB): while the bf16 text encoder (16.8 GB) is on the card to encode a new prompt, the DiT (10 GB) steps aside to the RAM, so the two never share the card (measured peak 27 to 30 GB without it on a 32 GB card, about 19 expected with it). Costs about a second each way per NEW prompt (cached prompts never touch the encoder). false = the DiT stays; moot with the nf4 encoder (resident). Env MOSS_ENCODE_SWAP.",
-    "moss_edit_ref_max_edge": 2048,
-    "_moss_edit_ref_max_edge_help": "Edit (references): the long side of every reference image (the one to edit included) is capped at this many pixels before it enters the DiT as a prefix (never enlarged, 16 px grid). 2048 = the references at their own size, what the LoRA was trained on (source and target of the same size): on the 5090 a 1152x1632 poster read at 1024 came back with garbled texts, at 512 the source was lost. Lower it only for speed (the prefix costs per token). The OUTPUT keeps the source image's size. Env MOSS_EDIT_REF_MAX_EDGE.",
-    "moss_precision": "bf16",
-    "_moss_precision_help": "Precision of the Qwen3.5-9B TEXT ENCODER (the DiT is always bf16): 'bf16' (16.8 GB, measured) or 'nf4' (bitsandbytes, ~5.6 GB, NOT measured on the 5090 yet). Env MOSS_PRECISION."
+    "_default_negative_prompt_help": "Unused: MiniMax-H3-Image has no negative prompt (the guidance is baked into the weights).",
+    "_minimax_model_help": "Base repo (HF) or a local folder laid out like it: it lends the VAE, the tokenizer, the processor and the configs. MiniMax-H3-Image Community License: rights granted worldwide EXCEPT in the European Union, the United Kingdom, the Republic of Korea and the United States (https://platform.minimax.io/license). Env MINIMAX_MODEL.",
+    "minimax_model": "MiniMaxAI/MiniMax-H3-Image",
+    "_minimax_transformer_help": "The transformer: a GGUF file of the PRUNED MiniMax-H3-Image DiT (unsloth/MiniMax-H3-Image-GGUF, Abiray/MiniMax-H3-Image-GGUF), kept quantized on the card. Empty = the first one found in ./checkpoints, else minimax_h3_image_pruned-UD-Q5_K_XL.gguf downloaded into the Hugging Face cache (15.5 GB). Safetensors builds (fp8, int8 ConvRot, nvfp4) are refused by name. Env MINIMAX_TRANSFORMER.",
+    "minimax_transformer": ""
 }

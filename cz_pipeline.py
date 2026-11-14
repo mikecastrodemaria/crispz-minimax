@@ -1,9 +1,9 @@
-"""crispz-moss - the MOSS-Image core (vendored MOSSImagePipeline, bf16): loading the
+"""crispz-minimax - the MiniMax-H3-Image core (vendored MOSSImagePipeline, bf16): loading the
 pipeline (cz_moss.MossPipe, behind the same calling convention as crispz-flux3's
 Flux3Pipe) + LoRAs, generation and orchestration (generate / txt2img_run / process_one /
 outpaint / inpaint) + the mutable runtime state.
 
-MOSS port (crispz-moss 0.1): the model is loaded by cz_moss.load(). MOSS-Image is text
+MOSS port (crispz-minimax 0.1): the model is loaded by cz_moss.load(). MiniMax-H3-Image is text
 to image; img2img, inpaint, outpaint, reframe, refine and the detailer run through the
 adapter's EMULATED img2img / inpaint (lot 3: SDEdit on the tail of the native schedule,
 latent blending under the mask). Editing with references is not available (the adapter
@@ -25,7 +25,7 @@ Fork of crispz-qwen-edit (Qwen-Image). Mapping:
   - inpaint / reframe        -> Flux2KleinInpaintPipeline
   - img2img (refine/upscale) -> Flux2KleinInpaintPipeline + a full WHITE mask
                                 (the base pipeline does NOT expose `strength`)
-  (crispz-moss: all four are the ONE cz_moss.MossPipe; get_pipe hands the base back
+  (crispz-minimax: all four are the ONE cz_moss.MossPipe; get_pipe hands the base back
   under every kind, and `strength` / `mask_image` are honoured by the adapter itself)
 
 klein-4B is DISTILLED (`is_distilled: true`). Measured on 2026-09-05 (tests/
@@ -67,12 +67,12 @@ from cz_core import (
 )
 
 import cz_flux3  # noqa: F401  (family markers; img2img / inpaint helpers for lot 3)
-import cz_moss as engine
+import cz_minimax as engine
 
-# The base MOSS-Image model (text to image). Overridden through env MOSS_MODEL or
+# The base MiniMax-H3-Image model (text to image). Overridden through env MINIMAX_MODEL or
 # prefs/config 'moss_model'. Public repo, Apache 2.0 (no token, no licence click). An
 # HF token (`hf_token`) is still honoured for rate limits and private mirrors.
-DEFAULT_BASE_REPO = (os.environ.get("MOSS_MODEL") or engine.DEFAULT_REPO)
+DEFAULT_BASE_REPO = (os.environ.get("MINIMAX_MODEL") or engine.DEFAULT_REPO)
 # Multi-reference editing has NO separate model on klein: the base pipeline's `image`
 # takes a list of PIL images. The "omni" default is therefore the base model itself
 # (the symbol survives for cz_ui / cz_protocol, see the module docstring).
@@ -101,10 +101,10 @@ if DEVICE == "cuda":
 # so no existing config breaks, and they are reported when they answer.
 # NB: the Python VARIABLES keep their names (ZIMAGE_TRANSFORMER...) - cz_ui, cz_cli and
 # cz_protocol import them, that is the module's API contract (see the docstring).
-# crispz-moss: its own keys. The klein_* / flux3_* / ideogram_* ones are NOT read: they
+# crispz-minimax: its own keys. The klein_* / flux3_* / ideogram_* ones are NOT read: they
 # point at other families' repos and checkpoints, which do not load in a MOSS pipeline.
-CFG_MODEL_KEY = "moss_model"
-CFG_TRANSFORMER_KEY = "moss_transformer"
+CFG_MODEL_KEY = "minimax_model"
+CFG_TRANSFORMER_KEY = "minimax_transformer"
 
 
 def _cfg_first(*keys, env=()):
@@ -125,27 +125,27 @@ def _cfg_first(*keys, env=()):
     return None
 
 
-_zmodel = _cfg_first(CFG_MODEL_KEY, env=("MOSS_MODEL",)) or DEFAULT_BASE_REPO
-ZIMAGE_TRANSFORMER = _cfg_first(CFG_TRANSFORMER_KEY, env=("MOSS_TRANSFORMER",))
+_zmodel = _cfg_first(CFG_MODEL_KEY, env=("MINIMAX_MODEL",)) or DEFAULT_BASE_REPO
+ZIMAGE_TRANSFORMER = _cfg_first(CFG_TRANSFORMER_KEY, env=("MINIMAX_TRANSFORMER",))
 if _is_single_file(_zmodel):
     ZIMAGE_TRANSFORMER = _zmodel
     BASE_REPO = DEFAULT_BASE_REPO
 else:
     BASE_REPO = _zmodel
 if not engine.is_engine_repo(BASE_REPO):
-    _log(f"config: '{BASE_REPO}' is not a MOSS-Image repo (crispz-moss only runs "
-         f"MOSS-Image) -> using {DEFAULT_BASE_REPO}")
+    _log(f"config: '{BASE_REPO}' is not a MiniMax-H3-Image repo (crispz-minimax only runs "
+         f"MiniMax-H3-Image) -> using {DEFAULT_BASE_REPO}")
     BASE_REPO = DEFAULT_BASE_REPO
 
 # Transformer precision for the official repos: bf16 (transformer/, ~11 GB), or BFL's
 # pre-quantized fp8r (~6.3 GB, fast from compute capability 8.9) / nvfp4 (~5.3 GB,
 # Blackwell + flashinfer). Ignored when a single-file transformer is set.
-# crispz-moss: the precision of the TEXT ENCODER (Qwen3.5-9B: bf16 16.8 GB, or nf4
+# crispz-minimax: the precision of the TEXT ENCODER (Qwen3.5-9B: bf16 16.8 GB, or nf4
 # through bitsandbytes, ~5.6 GB); the DiT is always bf16 (cz_moss.PRECISIONS).
-PRECISION = str(os.environ.get("MOSS_PRECISION") or _prefs.get("moss_precision")
-                or CONFIG.get("moss_precision") or engine.PRECISIONS[0]).strip().lower()
+PRECISION = str(os.environ.get("MINIMAX_PRECISION") or _prefs.get("minimax_precision")
+                or CONFIG.get("minimax_precision") or engine.PRECISIONS[0]).strip().lower()
 if PRECISION not in engine.PRECISIONS:
-    _log(f"config: moss_precision '{PRECISION}' unknown "
+    _log(f"config: minimax_precision '{PRECISION}' unknown "
          f"({'/'.join(engine.PRECISIONS)}) -> {engine.PRECISIONS[0]}")
     PRECISION = engine.PRECISIONS[0]
 
@@ -183,7 +183,7 @@ def _file_variant(path):
 def _variant_repo_for(variant):
     """The official repo whose config matches `variant`, keeping a local or mirror base
     repo when it already is of that variant."""
-    # One MOSS-Image base repo: whatever the variant asked, the base repo answers.
+    # One MiniMax-H3-Image base repo: whatever the variant asked, the base repo answers.
     return BASE_REPO if engine.is_engine_repo(BASE_REPO) else engine.DEFAULT_REPO
 
 # Replacement text encoder (Models > Checkpoints > Text encoder). Empty = the one from
@@ -198,7 +198,7 @@ def _resolve_text_encoder(env, prefs, config):
     """The encoder at startup: env > preferences > config. A key PRESENT in the
     preferences wins even when empty: that is the "Default" choice made in the UI, and a
     config.txt value must not undo it on the next start (a "" used to pass for absent)."""
-    v = str(env.get("MOSS_TEXT_ENCODER") or env.get("KLEIN_TEXT_ENCODER") or "").strip()
+    v = str(env.get("MINIMAX_TEXT_ENCODER") or env.get("KLEIN_TEXT_ENCODER") or "").strip()
     if v:
         return v
     if CFG_TEXT_ENCODER_KEY in prefs:
@@ -352,7 +352,7 @@ _VRAM_DOWNGRADE = False
 # to 8.0). The variable is kept because cz_ui / cz_cli / cz_protocol read and display it,
 # but _cfg() does NOT pass it to the pipeline any more: it has no effect.
 # Overridable through env KLEIN_CFG (no effect either, kept for symmetry).
-# MOSS-Image: a constant CFG (3.0 official, 3 to 6 advised); no value -> 3.0.
+# MiniMax-H3-Image: a constant CFG (3.0 official, 3 to 6 advised); no value -> 3.0.
 GUIDANCE = (float(os.environ.get("KLEIN_CFG") or CONFIG.get("default_guidance") or 0)
             or float(engine.SCHEDULE_PEAK))
 
@@ -522,7 +522,7 @@ def _cfg(negative=None, guidance=None):
     a warning on a spec that carries one) -- house rule: degradation announced,
     never silent.
 """
-    # MOSS-Image: a real CFG with a real negative prompt, encoded by the Qwen3.5 text
+    # MiniMax-H3-Image: a real CFG with a real negative prompt, encoded by the Qwen3.5 text
     # encoder (cz_moss.MossPipe remembers the last negative's embeddings, so the same
     # negative on every image costs the encoder one trip). Empty = the official default.
     return {"negative_prompt": str(negative or "")}
@@ -630,7 +630,7 @@ def _qwen_call(pipe, **kw):
     `qwen/main` (some thirty callsites).
 """
     pipe = _fresh(pipe)          # a reference that outlived free_vram (lot 7)
-    if isinstance(pipe, engine.MossPipe) and isinstance(kw.get("prompt"), str):
+    if isinstance(pipe, engine.EnginePipe) and isinstance(kw.get("prompt"), str):
         # A layout DRAFT (cz_caption) is compiled here, BEFORE the embedding cache sees
         # the prompt, and forces the size it was drawn for (said once per layout). With
         # an image (img2img / inpaint, lot 3) the IMAGE sets the size: the draft is
@@ -652,8 +652,8 @@ def _qwen_call(pipe, **kw):
     # silence the noise. Should an UNdistilled FLUX.2 checkpoint ever be loaded,
     # is_distilled is false and the UI slider is passed through, becoming a real CFG again.
     need_cfg = False
-    if "guidance_scale" not in kw and isinstance(pipe, engine.MossPipe):
-        # MOSS-Image: the slider is a plain CFG (3.0 official); 1.0 skips the negative
+    if "guidance_scale" not in kw and isinstance(pipe, engine.EnginePipe):
+        # MiniMax-H3-Image: the slider is a plain CFG (3.0 official); 1.0 skips the negative
         # branch (one forward a step), anything else runs two.
         kw["guidance_scale"] = float(GUIDANCE)
     if "guidance_scale" not in kw and isinstance(pipe, cz_flux3.Flux3Pipe):
@@ -712,7 +712,7 @@ def _qwen_call(pipe, **kw):
     # (Not on the FLUX.3 / MOSS adapters: they take `strength` themselves, and a
     # white mask would only cost a mask build there.)
     if ("strength" in kw and kw.get("image") is not None and "mask_image" not in kw
-            and not isinstance(pipe, (engine.MossPipe, cz_flux3.Flux3Pipe))):
+            and not isinstance(pipe, (engine.EnginePipe, cz_flux3.Flux3Pipe))):
         img = kw["image"]
         ref = img[0] if isinstance(img, (list, tuple)) else img
         kw["mask_image"] = Image.new("L", ref.size, 255)
@@ -837,14 +837,14 @@ def _apply_sampler(pipe):
     generation time."""
     if _BASE_SCHED_CONFIG is None:
         return
-    if isinstance(pipe, engine.MossPipe):
-        # MOSS-Image sets its own sigmas at every call (shift 5.0, snapped to the training
+    if isinstance(pipe, engine.EnginePipe):
+        # MiniMax-H3-Image sets its own sigmas at every call (shift 5.0, snapped to the training
         # grid) on its FlowMatch Euler scheduler: a swapped scheduler or remapped schedule
         # would be overwritten or fed sigmas it was not trained on. Kept as is, said once.
         if (SAMPLER, SCHEDULE) != ("euler", "sgm_uniform") and \
                 (SAMPLER, SCHEDULE) not in _SAMPLER_IGNORED_SAID:
             _SAMPLER_IGNORED_SAID.add((SAMPLER, SCHEDULE))
-            _log(f"sampler '{SAMPLER}/{SCHEDULE}' not applied: MOSS-Image runs its native "
+            _log(f"sampler '{SAMPLER}/{SCHEDULE}' not applied: MiniMax-H3-Image runs its native "
                  f"FlowMatch Euler schedule (shift 5.0, snapped to its training grid).")
         return
     if isinstance(pipe, cz_flux3.Flux3Pipe):
@@ -1065,7 +1065,7 @@ def set_zimage_model(repo_or_path):
     # not been accepted yet therefore left a None stuck for the whole session: the width
     # filter stayed off even after accepting the licence, until a restart. Choosing that
     # repo counts as "retry", so its entry is purged -- the CURRENT repo chosen again
-    # too (crispz-moss has one base repo: re-choosing it is the only retry there is).
+    # too (crispz-minimax has one base repo: re-choosing it is the only retry there is).
     _BASE_DIM_CACHE.pop(repo_or_path, None)
     if repo_or_path != BASE_REPO:
         # The base repo changes: the VAE/encoder/tokenizer change too -> a full reload.
@@ -1187,9 +1187,19 @@ def _text_encoder_problem(src, base=None):
     src = (src or "").strip()
     if not src:
         return None
+    # crispz-minimax: the encoder is a GGUF of the Qwen3-VL-32B cut to its 50 layers,
+    # with transformers tensor names (unsloth/MiniMax-H3-GGUF). Nothing else loads.
     if src.lower().endswith(".gguf"):
-        return ("a GGUF text encoder is a ComfyUI / llama.cpp file; this app loads the "
-                "transformers folder (config.json + .safetensors)")
+        if not os.path.isfile(src):
+            return "the file does not exist"
+        if engine.is_text_encoder_file(src):
+            return None
+        return ("not a Qwen3-VL-32B text encoder with transformers tensor names (a "
+                "llama.cpp or ComfyUI GGUF names its tensors differently); take "
+                f"{engine.DEFAULT_TEXT_ENCODER[1]} from {engine.DEFAULT_TEXT_ENCODER[0]}")
+    return ("crispz-minimax loads its text encoder from a GGUF file only (the 66 GB "
+            f"transformers folder is not handled); take {engine.DEFAULT_TEXT_ENCODER[1]} "
+            f"from {engine.DEFAULT_TEXT_ENCODER[0]}")
     if os.path.isfile(src) or _looks_single_file(src):
         return ("a single file carries no config.json; point to the FOLDER that holds "
                 "config.json and the weights")
@@ -1251,6 +1261,20 @@ def list_text_encoders():
     """Encoder folders offered in the Models tab: the subfolders with a config.json inside
     `text_encoders_dir`, or inside text_encoders / text_encoder / clip next to the
     checkpoints folder or its parent (ComfyUI and Forge conventions)."""
+    # crispz-minimax: GGUF encoder FILES, in the checkpoints folders and the usual
+    # text encoder folders next to them.
+    gg_roots = list(_checkpoint_dirs()) + ([TEXT_ENCODERS_DIR] if TEXT_ENCODERS_DIR else [])
+    _here = os.path.abspath(CHECKPOINTS_DIR or ".")
+    for up in (os.path.dirname(_here), os.path.dirname(os.path.dirname(_here))):
+        gg_roots += [os.path.join(up, n) for n in ("text_encoders", "text_encoder", "clip")]
+    gg = []
+    for r in gg_roots:
+        for base_dir, _dirs, files in os.walk(r):
+            for f in sorted(files):
+                p = os.path.join(base_dir, f)
+                if f.lower().endswith(".gguf") and p not in gg and engine.is_text_encoder_file(p):
+                    gg.append(p)
+    return gg
     roots = [TEXT_ENCODERS_DIR] if TEXT_ENCODERS_DIR else []
     here = os.path.abspath(CHECKPOINTS_DIR or ".")
     for up in (os.path.dirname(here), os.path.dirname(os.path.dirname(here))):
@@ -1395,11 +1419,11 @@ _FLUX2_DIM_SIGS = (("double_stream_modulation_img.lin.weight", 6),
                    ("double_stream_modulation_txt.lin.weight", 6),
                    ("single_stream_modulation.lin.weight", 3),
                    ("single_stream_modulation.linear.weight", 3))
-# crispz-moss: ONE width. FLUX.3 Image Klein is 3072 wide, exactly like FLUX.2-klein-4B;
+# crispz-minimax: ONE width. FLUX.3 Image Klein is 3072 wide, exactly like FLUX.2-klein-4B;
 # the 4096 lane is FLUX.2-klein-9B and nothing else. So the width tells FLUX.3 and the 4B
 # apart from NOTHING: the family is read from the tensor names first (_file_family,
 # _flux3_file_refusal), and the width only serves to NAME a 9B file in a message.
-FLUX3_HIDDEN_DIM = engine.HIDDEN_SIZE   # crispz-moss: MOSS-Image is 3072 wide (so is FLUX.3: names decide)
+FLUX3_HIDDEN_DIM = engine.HIDDEN_SIZE   # crispz-minimax: MiniMax-H3-Image is 3072 wide (so is FLUX.3: names decide)
 _FLUX2_VARIANTS = {3072: "4B", 4096: "9B"}
 _BASE_DIM_CACHE = {}
 
@@ -1513,7 +1537,7 @@ def _base_hidden_dim(base=None):
     if base in _BASE_DIM_CACHE:
         return _BASE_DIM_CACHE[base]
     if engine.is_engine_repo(base):
-        # Known without reading anything: every MOSS-Image repo (official, a mirror) is
+        # Known without reading anything: every MiniMax-H3-Image repo (official, a mirror) is
         # 3072 wide (FLUX3_HIDDEN_DIM keeps its crispz-flux3 name for merges). It also
         # spares a config fetch that fails offline and would switch the filter off.
         _BASE_DIM_CACHE[base] = FLUX3_HIDDEN_DIM
@@ -1585,11 +1609,11 @@ def _variant_fix(dim):
     sending them to the wrong place. A FLUX.2 file has no fix HERE: it runs in
     crispz-klein, the studio this one was forked from."""
     if dim == FLUX3_HIDDEN_DIM:
-        return (f"switch the base model to a MOSS-Image repo (the checkpoint dropdown, "
+        return (f"switch the base model to a MiniMax-H3-Image repo (the checkpoint dropdown, "
                 f"or config '{CFG_MODEL_KEY}').")
     if dim in _FLUX2_VARIANTS:
-        return ("run it in crispz-klein: FLUX.2 Klein and MOSS-Image share neither "
-                "layers nor weights, so no setting of crispz-moss loads it.")
+        return ("run it in crispz-klein: FLUX.2 Klein and MiniMax-H3-Image share neither "
+                "layers nor weights, so no setting of crispz-minimax loads it.")
     return f"point '{CFG_MODEL_KEY}' at the matching base repo."
 
 
@@ -1674,9 +1698,9 @@ def _lora_unsupported(path):
         home = {"flux2": "crispz-klein", "flux3": "crispz-flux3",
                 "ideogram": "crispz-ideogram"}.get(fam, "its own app")
         return (f"{_FAMILY_LABEL.get(fam, fam)} LoRA - its layers do not exist in "
-                f"MOSS-Image, nothing would apply. It works in {home}")
+                f"MiniMax-H3-Image, nothing would apply. It works in {home}")
     if fam == engine.FAMILY:
-        # Lot 4: crispz-moss's own loader (cz_moss_lora) reads the kohya, peft,
+        # Lot 4: crispz-minimax's own loader (cz_moss_lora) reads the kohya, peft,
         # moss-edit-lora and ComfyUI diff layouts; what it refuses, it names (a control
         # LoRA that replaces a layer, a file with no LoRA tensor at all).
         import cz_moss_lora
@@ -1766,7 +1790,7 @@ def _safetensors_unsupported(path):
         error, at worst a flat image.
     ComfyUI-style 'scaled' FP8 / INT8 are NO LONGER rejected: they go through the dequant
     loader (_safetensors_dequant + _load_dequant_state_dict).
-    crispz-moss: the FAMILY is checked first (tensor names), the width no longer is: a
+    crispz-minimax: the FAMILY is checked first (tensor names), the width no longer is: a
     FLUX.2-klein-4B file is as wide as FLUX.3 and would pass a width check.
 """
     bad = _family_refusal(path)
@@ -2133,8 +2157,8 @@ def _load_dequant_state_dict(path):
     if engine.family_from_keys(k[len(prefix):] for k, _ in entries) != engine.FAMILY:
         raise RuntimeError(
             f"{os.path.basename(path)}: quantized checkpoint does not look like a "
-            "MOSS-Image transformer (different architecture); crispz-moss only "
-            "loads MOSS-Image.")
+            "MiniMax-H3-Image transformer (different architecture); crispz-minimax only "
+            "loads MiniMax-H3-Image.")
     # SEQUENTIAL read in the file's PHYSICAL order (data_offsets): a HDD collapses on
     # random access, and the key order does not follow the data's.
     entries.sort(key=lambda kv: kv[1].get("data_offsets", [0])[0])
@@ -2347,7 +2371,7 @@ def _gguf_layout(path):
         names = [t.name for t in GGUFReader(path).tensors]
         if not names:
             return "unknown"
-        # crispz-moss: a FLUX.3 file is told by its block names (the same reading as
+        # crispz-minimax: a FLUX.3 file is told by its block names (the same reading as
         # the .safetensors family guard), whatever 'general.architecture' says.
         fam = engine.family_from_keys(names)
         if fam in (engine.FAMILY, "flux3"):
@@ -2416,7 +2440,7 @@ def _walk_checkpoints(d):
     return sorted(out)
 
 
-# --- crispz-moss: which single files are FLUX.3 transformers ---------------------------
+# --- crispz-minimax: which single files are FLUX.3 transformers ---------------------------
 # crispz-klein sorted single files by HIDDEN SIZE (3072 = 4B, 4096 = 9B). That test is
 # blind here: FLUX.3 Image Klein is ALSO 3072 wide, so a FLUX.2-klein-4B checkpoint
 # would pass it and die gigabytes later in load_state_dict. The family is read from the
@@ -2455,13 +2479,13 @@ def _family_refusal(path):
     fam = _file_family(path)
     if fam == "flux2":
         return ("it is a FLUX.2 Klein checkpoint, which runs in crispz-klein: it shares "
-                "neither layers nor weights with MOSS-Image")
+                "neither layers nor weights with MiniMax-H3-Image")
     if fam == "flux3":
         return ("it is a FLUX.3 Image Klein checkpoint, which runs in crispz-flux3: it "
-                "shares neither layers nor weights with MOSS-Image")
+                "shares neither layers nor weights with MiniMax-H3-Image")
     if fam == "ideogram":
         return ("it is an Ideogram 4 checkpoint, which runs in crispz-ideogram: it "
-                "shares neither layers nor weights with MOSS-Image")
+                "shares neither layers nor weights with MiniMax-H3-Image")
     return None
 
 
@@ -2479,15 +2503,14 @@ def _flux3_file_refusal(path):
         return _family_refusal(path)
     if fam != engine.FAMILY:
         if engine.is_text_encoder_file(path):
-            return ("it is a Qwen3.5 text encoder, not a transformer: set it as the "
+            return ("it is a Qwen3-VL text encoder, not a transformer: set it as the "
                     "text encoder (Models > Text encoder, or config 'text_encoder')")
-        return ("no MOSS-Image transformer tensor in it (a VAE, a text encoder, or "
-                "another model family); crispz-moss only runs MOSS-Image")
-    # A MOSS-Image DiT in one file (ComfyUI / CivitAI layout): bf16 and int8 ConvRot
+        return ("no MiniMax-H3-Image transformer tensor in it (a VAE, a text encoder, or "
+                "another model family); crispz-minimax only runs MiniMax-H3-Image")
+    # A MiniMax-H3-Image DiT in one file (ComfyUI / CivitAI layout): bf16 and int8 ConvRot
     # load (fused qkv split, dequantized in RAM); the 4-bit builds are refused by name.
-    if _is_gguf_path(path):
-        return ("a GGUF MOSS-Image transformer: not loadable yet (no GGUF reader for this "
-                "family); take the bf16 or int8 .safetensors of the same page")
+    # crispz-minimax: GGUF is THE format (kept quantized on the card); the engine names
+    # what it refuses (safetensors builds, the dense layout, the video model).
     return engine.single_file_refusal(path)
     if not _is_gguf_path(path):
         # A comfy-quant format with no dequant here (w6a8_int8 = 6-bit weights with group
@@ -2500,7 +2523,7 @@ def _flux3_file_refusal(path):
         except Exception:
             odd = []
         if odd:
-            return (f"comfy-quant '{odd[0]}' build (6-bit or packed weights): crispz-moss "
+            return (f"comfy-quant '{odd[0]}' build (6-bit or packed weights): crispz-minimax "
                     f"dequantizes the INT8 and FP8 'scaled' builds only. Take the INT8 "
                     f"or bf16 file of the same page")
     return None
@@ -2532,13 +2555,16 @@ def list_checkpoints():
                         flux2_skips += 1
                         _dbg(f"checkpoint skipped (FLUX.2): {f}")
                     else:
-                        _log(f"checkpoint skipped ({why}): {f}")
+                        if "text encoder" in why:
+                            _dbg(f"checkpoint skipped ({why}): {f}")   # listed under Text encoder
+                        else:
+                            _log(f"checkpoint skipped ({why}): {f}")
                     continue
             seen.add(f)
             out.append(rel)
     if flux2_skips:
         _log(f"{flux2_skips} FLUX.2 checkpoint(s) skipped in the checkpoint folder(s): "
-             f"they run in crispz-klein. crispz-moss lists MOSS-Image transformers only.")
+             f"they run in crispz-klein. crispz-minimax lists MiniMax-H3-Image transformers only.")
     return sorted(out)
 
 
@@ -2578,7 +2604,7 @@ def resolve_checkpoint(name):
 
 
 _FILE_INFO_CACHE = {}
-_FAMILY_LABEL = {"moss": "MOSS-Image", "ideogram": "Ideogram", "flux3": "FLUX.3", "flux2": "FLUX.2"}
+_FAMILY_LABEL = {"moss": "MiniMax-H3-Image", "ideogram": "Ideogram", "flux3": "FLUX.3", "flux2": "FLUX.2"}
 _DTYPE_LABEL = {"BF16": "bf16", "F16": "fp16", "F32": "fp32", "F8_E4M3": "FP8",
                 "F8_E5M2": "FP8", "I8": "INT8", "I16": "INT16"}
 # `general.file_type` is llama.cpp's LlamaFileType enum ("MOSTLY_Q4_K_M"...), NOT the
@@ -2898,7 +2924,7 @@ def set_omni_model(repo):
     global OMNI_MODEL
     OMNI_MODEL = BASE_REPO
     if (repo or "").strip() and (repo or "").strip() != BASE_REPO:
-        _log(f"Omni model ignored ({repo}): MOSS-Image edits with the base model "
+        _log(f"Omni model ignored ({repo}): MiniMax-H3-Image edits with the base model "
              f"({BASE_REPO}) plus the Moss-Image-Edit LoRA. Change the checkpoint to "
              f"change the editor.")
 
@@ -2914,19 +2940,11 @@ def check_omni_available():
     """On klein, multi-reference editing is NATIVE to the base pipeline: it is available as
     soon as the model is loadable, with no second download and no repo to check on the Hub.
     So a ready message is always returned (cz_ui's contract wants a markdown string)."""
-    import cz_edit_loras
-    s = cz_edit_loras.spec(cz_edit_loras.EDIT_PRESET) or {}
-    path = cz_edit_loras.available_path(cz_edit_loras.EDIT_PRESET)
-    head = (f"**Edit ready:** the {cz_edit_loras.EDIT_PRESET} LoRA is on disk "
-            f"(`{os.path.basename(path)}`)." if path else
-            f"**Edit needs one download:** the {cz_edit_loras.EDIT_PRESET} LoRA "
-            f"(`{s.get('repo', '')}/{s.get('weights', '')}`, about 300 MB) is fetched on "
-            f"the first Edit, or when the preset is picked below.")
-    return (f"{head} It runs in the SAME pipeline as text to image (`{BASE_REPO}`, no "
-            f"second model): Ref 1 is the image to edit (the output takes its size), up "
-            f"to 3 more references after it, the instruction in plain words. References "
-            f"are read at {engine.edit_ref_max_edge()} px on their long side at most "
-            f"(`moss_edit_ref_max_edge`). Licence of the LoRA {s.get('licence', '')}")
+    return (f"**Edit ready:** editing with references is native to {engine.MODEL_LABEL} "
+            f"(`{BASE_REPO}`, the same model as text to image, no LoRA and no second "
+            f"download). Ref 1 is the image to edit (the output takes its size), up to 3 "
+            f"more references after it; the prompt calls them `<Picture 1>`, `<Picture 2>`... "
+            f"in the order of the slots.")
 
 
 @_gpu_exclusive
@@ -3014,12 +3032,12 @@ def _resolve_auto(retest=False):
 
 
 def _moss_auto(mode, why, total_gb):
-    """MOSS-Image: 'auto' prefers 'model' (encoder-only offload) over 'none' on cards
+    """MiniMax-H3-Image: 'auto' prefers 'model' (encoder-only offload) over 'none' on cards
     under engine.AUTO_NONE_MIN_VRAM_GB. The VRAM test only knows the weights fit; the
     2 Mpx denoise needs the 16.8 GB (bf16) the encoder would hold for nothing between
     prompts. An explicit 'none' is never touched (this runs for 'auto' only)."""
     if mode == "none" and total_gb and total_gb < engine.AUTO_NONE_MIN_VRAM_GB:
-        return "model", (f"{why}; MOSS-Image on {total_gb:.0f} GB: text encoder offloaded "
+        return "model", (f"{why}; MiniMax-H3-Image on {total_gb:.0f} GB: text encoder offloaded "
                          f"between prompts to keep the large renders clear of the VRAM "
                          f"ceiling, explicit 'none' to override")
     return mode, why
@@ -3262,12 +3280,12 @@ def _latent_rgb_on(device, dtype):
     return hit
 
 
-# MOSS-Image packs its tokens in the FLUX order (c, p, p) and normalizes them with the
+# MiniMax-H3-Image packs its tokens in the FLUX order (c, p, p) and normalizes them with the
 # bn statistics of their own channel: the FLUX.2 matrix applies as is. `proj` stays on
 # latent_preview_image for a family that would pack differently (none here).
 def _preview_proj_for(pipe):
     """The projection to use for `pipe` (the object the denoise hands its callback):
-    None = the FLUX.2 matrix as is, which is MOSS-Image's case."""
+    None = the FLUX.2 matrix as is, which is MiniMax-H3-Image's case."""
     return None
 
 
@@ -3279,9 +3297,12 @@ def latent_preview_image(latents, width=0, height=0, proj=None):
     The grid comes from the asked resolution: a packed token is a 16x16 block of pixels.
     None when the two do not agree -- better no preview than a scrambled one.
     `proj` = (M, b) would replace the FLUX.2 matrix for a family that packs otherwise."""
+    # crispz-minimax: the engine hands (B, 24, h, w) and owns the matrix of its own VAE.
+    if getattr(latents, "dim", lambda: 0)() == 4 and latents.shape[1] == len(engine.LATENT_RGB):
+        return engine.latent_preview(latents, LIVE_PREVIEW_MAX_SIDE)
     z = latents[0].detach().float()
     if z.dim() == 3 and z.shape[0] == len(_LATENT_RGB):
-        # MOSS-Image hands its latents as (B, 128, h, w): the same 128 bn-normalized
+        # MiniMax-H3-Image hands its latents as (B, 128, h, w): the same 128 bn-normalized
         # channels in the FLUX order, with the grid explicit. Flattened to tokens here.
         c, h4, w4 = z.shape
         if width and height and (int(height) // 16, int(width) // 16) != (h4, w4):
@@ -3395,7 +3416,7 @@ def free_vram():
     # for a fresh pipe by _qwen_call / _refine_whole (see _fresh).
     for _p in {id(x): x for x in [_BASE_PIPE, *(_DERIVED or {}).values()]
                if x is not None}.values():
-        if hasattr(_p, "release") and isinstance(_p, engine.MossPipe):
+        if hasattr(_p, "release") and isinstance(_p, engine.EnginePipe):
             _p.release()
     _BASE_PIPE = None
     _DERIVED = {}
@@ -3498,7 +3519,7 @@ def restore_offload(pipe, why=""):
         else:
             pipe.to(DEVICE)
     except Exception as e:
-        _log(f"pipeline left on the CPU and NOT restored ({e}): restart crispz-moss")
+        _log(f"pipeline left on the CPU and NOT restored ({e}): restart crispz-minimax")
         return False
     _log(f"pipeline was left on the CPU{' after ' + why if why else ''} -> offload "
          f"'{off}' restored in place (no reload)")
@@ -3655,12 +3676,14 @@ _TRANSFORMER_VRAM_GB = {"4B": 7.2, "9B": 18.2}
 # 8.27 + the VAE 0.31, plus the transformer at its precision. The sums match the
 # "peak after load" of the diffusers blog (18.8 bf16 / 14.35 fp8r / 13.4 nvfp4), which is
 # what 'none' offload keeps resident.
-# crispz-moss: MOSS-Image from the repo's file sizes (GiB): the Qwen3.5-9B encoder 15.6
+# crispz-minimax: MiniMax-H3-Image from the repo's file sizes (GiB): the Qwen3.5-9B encoder 15.6
 # in bf16 (~5.6 in nf4) + the VAE 0.23 = the "rest" (by the ENCODER precision), and the
 # DiT 9.5 as the "transformer". To be replaced by the 5090 measures.
-_MOSS_REST_GB = {"bf16": 15.9, "nf4": 5.9}
-_FLUX3_REST_GB = _MOSS_REST_GB["bf16"]
-_FLUX3_TRANSFORMER_GB = {"bf16": 9.5, "nf4": 9.5}
+# crispz-minimax: the GGUF text encoder (18.2 GiB quantized on the card) + the VAE 2.3,
+# and the default GGUF DiT (UD-Q5_K_XL, 15.5); a chosen file weighs its own size.
+_MOSS_REST_GB = {"gguf": 20.5, "bf16": 20.5}
+_FLUX3_REST_GB = _MOSS_REST_GB["gguf"]
+_FLUX3_TRANSFORMER_GB = {"bf16": 15.5, "gguf": 15.5}
 
 
 def _base_vram_need_gb(base=None):
@@ -3757,12 +3780,10 @@ def _trim_text_encoder(pipe):
     _ENCODER_TRIMMED = False        # a new encoder: nothing pruned until we have acted
     if not TRIM_TEXT_ENCODER:
         return
-    if isinstance(pipe, engine.MossPipe):
-        # MOSS-Image reads the LAST hidden state of Qwen3.5-9B and the encoder is
-        # loaded without its lm_head already: there is nothing to prune. Said, so the
-        # setting is not believed to act.
-        _log("text encoder NOT trimmed: MOSS-Image reads Qwen3.5-9B down to its last "
-             "layer (no lm_head loaded), there is nothing to remove.")
+    if isinstance(pipe, engine.EnginePipe):
+        # crispz-minimax: the GGUF encoder already IS the trimmed one (the 50 layers the
+        # DiT reads out of 64, no final norm, no lm_head): nothing left to prune.
+        _dbg("text encoder: already cut to the 50 layers the model reads")
         return
     if isinstance(pipe, cz_flux3.Flux3Pipe):
         # FLUX.3 reads 8 hidden states of Qwen3-VL-4B, the last one at layer 32 of 36:
@@ -3840,6 +3861,15 @@ def _effective_offload(tpath=None):
     t = ZIMAGE_TRANSFORMER if tpath is None else tpath
     if DEVICE != "cuda":
         return off
+    # crispz-minimax: every weight is GGUF (the default files included, with no
+    # transformer set): 'model' is the only offload that runs, and 'none' only on a card
+    # that holds the encoder and the DiT together.
+    if off == "sequential":
+        return "model"
+    if off == "none" and (_total_vram_gb() or 0) >= engine.AUTO_NONE_MIN_VRAM_GB:
+        return "none"
+    if off != "model":
+        return "model"
     if _is_gguf_path(t) and off != "model":
         return "model"
     if off == "none":
@@ -3871,7 +3901,7 @@ def _load_transformer(path=None, base=None):
 """
     path = ZIMAGE_TRANSFORMER if path is None else path
     base = BASE_REPO if base is None else base
-    # crispz-moss: the base repo's DiT, or a ComfyUI / CivitAI single file read by the
+    # crispz-minimax: the base repo's DiT, or a ComfyUI / CivitAI single file read by the
     # engine (bf16 or int8 ConvRot, fused qkv split, refusals by name). The FLUX.3 path
     # below stays for merges from crispz-flux3 and is not reached.
     if path and _is_single_file(path):
@@ -3908,7 +3938,7 @@ def _load_transformer(path=None, base=None):
             if odd:
                 raise RuntimeError(
                     f"{os.path.basename(path)}: comfy-quant '{odd[0]}' build (6-bit or "
-                    f"packed weights, group scales). crispz-moss dequantizes the INT8 and "
+                    f"packed weights, group scales). crispz-minimax dequantizes the INT8 and "
                     f"FP8 'scaled' builds only: take the INT8, bf16 or GGUF file of the "
                     f"same page, or BFL's fp8r / nvfp4 variant (Precision selector).")
             dq = _safetensors_dequant(path)
@@ -3946,7 +3976,7 @@ def _clear_loras(pipe):
     place (the wrong LoRA applied). So the remaining adapters are deleted explicitly by name
     after the unload.
 """
-    if isinstance(pipe, engine.MossPipe):
+    if isinstance(pipe, engine.EnginePipe):
         pipe.set_loras([])
         return
     try:
@@ -4289,7 +4319,7 @@ def _sync_adapters(pipe, wanted, applied, force=False, tag="LoRA"):
 
 
 def _apply_moss_loras(pipe, force=False):
-    """MOSS-Image: the adapter's own loader. The set wanted is LORAS minus the files the
+    """MiniMax-H3-Image: the adapter's own loader. The set wanted is LORAS minus the files the
     guard refuses (each SKIPPED with its reason, never applied partially in silence)."""
     global _APPLIED_LORAS, _LAST_LORA_ERROR
     wanted = []
@@ -4328,7 +4358,7 @@ def _apply_loras(pipe, force=False):
     _sync_adapters. Returns True when applied, False on a failure (the caller falls back to
     a full reload)."""
     global _APPLIED_LORAS
-    if isinstance(pipe, engine.MossPipe):
+    if isinstance(pipe, engine.EnginePipe):
         return _apply_moss_loras(pipe, force=force)
     # A LoKr is MERGED into the weights: it can be neither removed nor re-weighted
     # without starting again from the original transformer. As soon as the requested set
@@ -4353,7 +4383,7 @@ _EDIT_AUTO_SAID = set()
 
 
 def _apply_moss_edit_loras(pipe, edit):
-    """MOSS-Image (lot 4b): the edit set on top of the base set, through the adapter's
+    """MiniMax-H3-Image (lot 4b): the edit set on top of the base set, through the adapter's
     own loader. The reference prefix needs a Moss-Image-Edit LoRA: when neither set
     carries one, the shipped preset is fetched (once) and applied for the edit, said with
     its licence note. A file the guard refuses is a HARD error (an edit without the LoRA
@@ -4432,7 +4462,7 @@ def _apply_edit_loras(pipe):
     # 'Edit LoRAs' box, which only concerns the task presets).
     if EDIT_SPEED and EDIT_SPEED.get("path"):
         edit.append((EDIT_SPEED["path"], 1.0))
-    if isinstance(pipe, engine.MossPipe):
+    if isinstance(pipe, engine.EnginePipe):
         return _apply_moss_edit_loras(pipe, edit)
     # Union of base + edit, with no duplicate path (the first weight wins, the same
     # rule as the protocol's for `loras`).
@@ -4713,11 +4743,9 @@ def _ensure_base():
         pipe.vae.config.force_upcast = False   # the VAE in bf16 (fp32 is slow on Blackwell) -- ALWAYS
     except Exception:
         pass
-    try:
-        pipe.vae.enable_slicing()
-        pipe.vae.enable_tiling()
-    except Exception as e:
-        _dbg(f"VAE tiling not available: {e}")
+    # crispz-minimax: the VAE decodes 16 Mpx whole within the card (measured on the 5090:
+    # the peak of a 4096x4096 render is the text encoder's, not the decode's). No tiling:
+    # its ViT decoder was not checked for seams.
     _apply_sampler(pipe)   # applies the chosen sampler (euler by default) to the base pipe
     _BASE_PIPE = pipe
     _DERIVED = {"txt2img": pipe}
@@ -4746,7 +4774,7 @@ def get_pipe(kind="img2img"):
     if kind in _DERIVED:
         _dbg(f"get_pipe('{kind}'): reuse derived")
         return _DERIVED[kind]
-    if isinstance(base, (engine.MossPipe, cz_flux3.Flux3Pipe)):
+    if isinstance(base, (engine.EnginePipe, cz_flux3.Flux3Pipe)):
         # FLUX.3: ONE object does everything -- img2img (strength = SDEdit on the flow
         # path) and inpaint (mask = per-step latent blending) live in the adapter. No
         # derived pipeline, no second copy of anything.
@@ -4809,7 +4837,7 @@ def get_pipe(kind="img2img"):
 
 def generate_omni(refs, prompt, negative, width, height, steps, seed,
                   guidance=None, honor_size=False, steps_explicit=False):
-    """MOSS-Image editing from references (lot 4b): refs[0] is the image to edit, the
+    """MiniMax-H3-Image editing from references (lot 4b): refs[0] is the image to edit, the
     others (up to 3) are references the instruction may mention in plain words ("the
     logo of the second image"). Keeps upstream's signature (cz_ui).
 
@@ -4817,7 +4845,7 @@ def generate_omni(refs, prompt, negative, width, height, steps, seed,
     runs its reference prefix, cz_moss.EditPrefix): no second model, no duplicate VRAM.
     The Moss-Image-Edit LoRA is required and applied hot here (_apply_moss_edit_loras
     fetches the preset once when no edit LoRA is set); it leaves again for text to image.
-    `negative` is a real CFG on MOSS-Image. width/height are ignored by default (the
+    `negative` is a real CFG on MiniMax-H3-Image. width/height are ignored by default (the
     output takes the source image's size); honor_size=True passes them to the pipe (the
     UI's 'Output size from Settings' checkbox, the protocol's size_explicit).
 """
@@ -4825,7 +4853,6 @@ def generate_omni(refs, prompt, negative, width, height, steps, seed,
     if not refs:
         raise ValueError("Edit needs at least one input image.")
     pipe = get_pipe("omni")
-    _apply_edit_loras(pipe)
     # Fast mode: its steps/guidance win over Settings; a caller that set them
     # explicitly (protocol spec.steps / spec.guidance) keeps the upper hand.
     if EDIT_SPEED:
@@ -4957,7 +4984,7 @@ def generate(prompt, width, height, steps, seed, negative_prompt=""):
     return img
 
 
-def round_to_multiple(x, m=16):
+def round_to_multiple(x, m=32):
     return max(m, int(round(x / m) * m))
 
 
@@ -5119,7 +5146,7 @@ def inpaint_run(background, mask, prompt, steps, denoise, seed):
 # The Z-Image model's "sweet spot" target resolution (~1 MP, like the txt2img ratios).
 # The reframe aims at that budget so as NOT to blow up the pixel count (a 2-3 MP output that
 # leaves the training zone -> slow and degraded quality).
-MODEL_TARGET_PX = 1024 * 1024
+MODEL_TARGET_PX = 2048 * 2048   # crispz-minimax: the model works from 4 Mpx up
 
 
 def _ratio_canvas(ratio_w, ratio_h, target_px=MODEL_TARGET_PX):
@@ -5357,7 +5384,7 @@ def outpaint_lora(image, directions, prompt, steps, seed, mask=None, expand=0.3,
     name = cz_edit_loras.OUTPAINT_PRESET
     if cz_edit_loras.spec(name) is None:
         raise NotImplementedError(
-            "no outpaint LoRA exists for MOSS-Image: use the emulated outpaint (Expand "
+            "no outpaint LoRA exists for MiniMax-H3-Image: use the emulated outpaint (Expand "
             "sides) of the Inpaint / Outpaint tab, or crispz-flux3's Outpaint LoRA.")
     s = cz_edit_loras.spec(name) or {}
     w = float(s.get("weight", 1.5) if weight is None else weight)
@@ -5709,7 +5736,7 @@ def source_meta(items, key="source"):
 def _gen_meta(mode, prompt, negative="", seed=None, steps=None, guidance=None,
               size=None, model=None, styles=None, extra=None):
     """Builds the generation metadata dict (for the sidecar/PNG)."""
-    m = {"app": "crispz-moss", "mode": mode, "prompt": prompt or "",
+    m = {"app": "crispz-minimax", "mode": mode, "prompt": prompt or "",
          "negative": negative or "", "date": _now_stamp()}
     if seed is not None and int(seed) >= 0:
         m["seed"] = int(seed)

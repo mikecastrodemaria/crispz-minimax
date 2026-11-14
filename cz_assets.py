@@ -1,4 +1,4 @@
-"""crispz-moss - UI/static assets (pure strings, no logic).
+"""crispz-minimax - UI/static assets (pure strings, no logic).
 
 Pulled out of app.py to lighten the main file:
   - ASSET_BROWSER_HTML : the Asset Browser's SPA (dropped into the output folder).
@@ -9,7 +9,7 @@ Pulled out of app.py to lighten the main file:
 
 ASSET_BROWSER_HTML = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>crispz-moss - Asset Browser</title>
+<title>crispz-minimax - Asset Browser</title>
 <style>
 :root{--bg:#0b1018;--panel:#1a2233;--line:#2a3346;--fg:#e6ebf2;--mut:#8b98ad}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);
@@ -100,13 +100,13 @@ grid-template-columns:1fr 360px}#exlb.open{display:grid}
 #exlb .nav{z-index:21}#exprev{left:0}#exnext{right:364px}
 #excount{color:var(--mut);font-size:12px;margin-bottom:8px}
 </style></head><body>
-<header><h1>crispz-moss</h1>
+<header><h1>crispz-minimax</h1>
 <input id="q" placeholder="Search metadata (prompt, style, model, seed, sampler...)" style="flex:1;min-width:160px">
 <button class="src active" data-s="outputs">Outputs</button>
 <button class="src" data-s="loras">LoRAs</button>
 <button class="src" data-s="models">Models</button>
-<button class="src" data-s="characters" title="MOSS-Image Character Catalog (hide1, Hugging Face)">Characters</button>
-<button class="src" data-s="styles" title="MOSS-Image Character Catalog: the 314 styles">Styles</button>
+<button class="src" data-s="characters" title="MiniMax-H3-Image Character Catalog (hide1, Hugging Face)">Characters</button>
+<button class="src" data-s="styles" title="MiniMax-H3-Image Character Catalog: the 314 styles">Styles</button>
 <button id="hiddenbtn" title="Show hidden folders">Hidden</button>
 <button id="blurbtn">Blur</button>
 <button id="fetchall" title="Fetch missing CivitAI info for every model in this tab" style="display:none">🔄 Fetch all missing</button>
@@ -178,7 +178,7 @@ var fk=Object.keys(e.facets||{});if(fk.length){h+='<h3>Facets</h3><div class="v"
 h+='<h3>Prompt</h3><div class="v">'+esc(e.prompt||'(none)')+'</div>';
 if(e.tags)h+='<h3>Tags</h3><div class="v">'+esc(e.tags)+'</div>';
 if(e.gen)h+='<h3>Generation prompt <span style="color:var(--mut);font-weight:400">(full scene, the catalog\'s)</span></h3><div class="v">'+esc(genPrompt(e))+'</div>';
-h+='<div class="v" style="margin:6px 0"><b>Send to crispz-moss:</b> <button onclick="send(\'prompt\',\'replace\')">prompt</button> '+
+h+='<div class="v" style="margin:6px 0"><b>Send to crispz-minimax:</b> <button onclick="send(\'prompt\',\'replace\')">prompt</button> '+
 '<button onclick="send(\'tags\',\'replace\')">tags</button> <button onclick="send(\'gen\',\'replace\')">generation prompt</button> '+
 '<button onclick="send(\'tags\',\'append\')">append tags</button></div>';
 h+='<div class="v" style="margin:6px 0"><b>Copy:</b> <button onclick="cp(\'prompt\')">prompt</button> <button onclick="cp(\'tags\')">tags</button> <button onclick="cp(\'gen\')">generation prompt</button></div>';
@@ -195,7 +195,7 @@ if(e.loras&&e.loras.length)h+='loras: '+esc(e.loras.join(', '))+'\n';
 h+='file: '+esc(e.file)+'</div>';
 h+='<button onclick="cp(\''+'prompt'+'\')">Copy '+(isOut?'prompt':'triggers')+'</button>';
 h+='<button onclick="cp(\''+'all'+'\')">Copy all</button>';
-if(isOut){h+='<button onclick="send(\'prompt\',\'replace\')" style="margin-left:6px;background:#274b6d;border-color:#3a6ea5" title="Puts this prompt in the app\'s prompt box (switch to the crispz-moss tab)">Send prompt to crispz-moss</button>';
+if(isOut){h+='<button onclick="send(\'prompt\',\'replace\')" style="margin-left:6px;background:#274b6d;border-color:#3a6ea5" title="Puts this prompt in the app\'s prompt box (switch to the crispz-minimax tab)">Send prompt to crispz-minimax</button>';
 if(e.negative)h+='<button onclick="send(\'both\',\'replace\')" style="margin-left:6px;background:#274b6d;border-color:#3a6ea5">Send prompt + negative</button>';}
 else{h+='<button onclick="send(\'prompt\',\'append\')" style="margin-left:6px;background:#274b6d;border-color:#3a6ea5" title="Appends the trigger words to the app\'s prompt box">Add triggers to the prompt</button>';}
 if(isOut){h+='<a href="'+encodeURI(e.file)+'" download="'+esc(e.file.split('/').pop())+'" style="margin-left:6px;color:#9fb3d6">Download</a>';
@@ -216,14 +216,14 @@ side.innerHTML=h;lb.classList.add('open');}
 function cp(what){const e=VIEW[cur];let t=e.prompt||'';if(what==='all')t=JSON.stringify(e,null,2);
 if(what==='tags')t=e.tags||'';if(what==='gen')t=genPrompt(e);
 navigator.clipboard.writeText(t).catch(()=>{});}
-// --- Send to the app: the crispz-moss tab listens (BroadcastChannel, localStorage as
+// --- Send to the app: the crispz-minimax tab listens (BroadcastChannel, localStorage as
 // the fallback), fills the prompt box and tells Gradio. Same origin: nothing leaves.
 function czSend(text,mode,target,negative){if(!text&&negative==null)return;
 var msg={type:'prompt',text:text||'',mode:mode||'replace',target:target||'prompt',t:Date.now()};
 if(negative!=null)msg.negative=negative;
-try{if(window.BroadcastChannel){new BroadcastChannel('crispz-moss').postMessage(msg);}}catch(e){}
+try{if(window.BroadcastChannel){new BroadcastChannel('crispz-minimax').postMessage(msg);}}catch(e){}
 try{localStorage.setItem('cz_prompt_handoff',JSON.stringify(msg));}catch(e){}
-toast('Sent to crispz-moss ('+(msg.mode==='append'?'appended to':'replaced')+' the '+msg.target+'): switch to the app tab.');}
+toast('Sent to crispz-minimax ('+(msg.mode==='append'?'appended to':'replaced')+' the '+msg.target+'): switch to the app tab.');}
 function send(what,mode){var e=VIEW[cur];if(!e)return;var t=e.prompt||'';
 if(what==='tags')t=e.tags||'';if(what==='gen')t=genPrompt(e);
 czSend(t,mode,'prompt',what==='both'?(e.negative||''):null);}
@@ -319,7 +319,7 @@ h+='<h3>Prompt</h3><div class="v">'+(x.prompt?esc(x.prompt):
 '<span style="color:var(--mut)">(the uploader did not publish the generation parameters for this image)</span>')+'</div>';
 if(x.width&&x.height)h+='<h3>Size</h3><div class="v">'+esc(x.width)+' × '+esc(x.height)+'</div>';
 h+='<button onclick="exCopy()">Copy prompt</button>';
-if(x.prompt)h+='<button onclick="exSend()" style="margin-left:6px;background:#274b6d;border-color:#3a6ea5" title="Puts this example prompt in the app\'s prompt box, to try the LoRA on it">Send to crispz-moss</button>';
+if(x.prompt)h+='<button onclick="exSend()" style="margin-left:6px;background:#274b6d;border-color:#3a6ea5" title="Puts this example prompt in the app\'s prompt box, to try the LoRA on it">Send to crispz-minimax</button>';
 h+='<a href="'+encodeURI(x.video||x.url)+'" target="_blank" style="margin-left:6px;color:#9fb3d6">'+(x.video?'Open video':'Open image')+'</a>';
 exside.innerHTML=h;}
 function exOpen(ix){if(!EX.length)return;excur=(ix+EX.length)%EX.length;exRender();exlb.classList.add('open');}
@@ -429,7 +429,7 @@ function _loadLegacy(tries){return fetch('_index/manifest.json?t='+Date.now())
 .then(function(m){_gen=m.generated||'';_allLoaded=true;_apply(m);_tryFocus();})
 .catch(function(){if(tries>0){grid.innerHTML='<p style="padding:20px;color:#8b98ad">Indexing…</p>';
 setTimeout(function(){_loadLegacy(tries-1);},1200);}
-else grid.innerHTML='<p style="padding:20px;color:#8b98ad">No index yet. Click Reindex in crispz-moss.</p>';});}
+else grid.innerHTML='<p style="padding:20px;color:#8b98ad">No index yet. Click Reindex in crispz-minimax.</p>';});}
 function loadSource(src){curSource=src;_folderUserSet=false;curFolder='';
 [].slice.call(document.querySelectorAll('.src')).forEach(function(b){b.classList.toggle('active',b.getAttribute('data-s')===src);});
 var _fa=document.getElementById('fetchall');
@@ -439,7 +439,7 @@ fetch(_srcUrls[src]+'?t='+Date.now()).then(function(r){return r.ok?r.json():null
 if(m){_apply(m);_tryFocus();}
 else{DATA=[];renderFolders();var nt=document.getElementById('note');if(nt)nt.style.display='none';
 grid.innerHTML='<p style="padding:20px;color:#8b98ad">'+((src==='characters'||src==='styles')?
-'No character catalog yet: in crispz-moss, Advanced panel, Styles tab, accordion "Character catalog", download it (7 MB from huggingface.co), then reopen the Asset Browser.':
+'No character catalog yet: in crispz-minimax, Advanced panel, Styles tab, accordion "Character catalog", download it (7 MB from huggingface.co), then reopen the Asset Browser.':
 'No '+src+' catalog yet (building in background). Reopen the Asset Browser in a few seconds.')+'</p>';cnt.textContent='0 / 0';}});}
 [].slice.call(document.querySelectorAll('.src')).forEach(function(b){b.onclick=function(){loadSource(b.getAttribute('data-s'));};});
 // Refresh: days.json is tiny -> it can be polled for a long time at no cost.
@@ -496,7 +496,7 @@ CZ_JS = """
   // Fullscreen and the arrows are handled natively by the Gradio gallery
   // (preview / fullscreen). No custom lightbox (it would double up on click).
 
-  // --- "Send to crispz-moss" from the Asset Browser (its own tab): fills the prompt
+  // --- "Send to crispz-minimax" from the Asset Browser (its own tab): fills the prompt
   // box (or the negative) and tells Gradio. BroadcastChannel, localStorage as the
   // fallback. INSIDE this function: Gradio evaluates the whole string as ONE
   // expression, a second statement after the arrow function is a syntax error that
@@ -522,7 +522,7 @@ CZ_JS = """
     }
     if (el) el.focus();
   }
-  try { if (window.BroadcastChannel) new BroadcastChannel('crispz-moss').onmessage = ev => apply(ev.data); } catch (e) {}
+  try { if (window.BroadcastChannel) new BroadcastChannel('crispz-minimax').onmessage = ev => apply(ev.data); } catch (e) {}
   window.addEventListener('storage', ev => {
     if (ev.key === 'cz_prompt_handoff' && ev.newValue) { try { apply(JSON.parse(ev.newValue)); } catch (e) {} }
   });

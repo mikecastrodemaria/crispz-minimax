@@ -1,9 +1,9 @@
-"""crispz-moss - local vectorization: an image -> an SVG (lot 5).
+"""crispz-minimax - local vectorization: an image -> an SVG (lot 5).
 
 Local vectorization: vtracer (visioncortex, MIT, a Rust
 library with Python wheels for Windows, Linux and macOS). Nothing leaves the machine.
 
-It traces colour regions into SVG paths, so it suits what MOSS-Image is made for here:
+It traces colour regions into SVG paths, so it suits what MiniMax-H3-Image is made for here:
 logos, icons, flat illustrations, posters with solid colours. A photo gives a heavy SVG
 of thousands of patches (said in the result line, with the path count and the size).
 

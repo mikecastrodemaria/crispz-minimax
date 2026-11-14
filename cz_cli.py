@@ -1,4 +1,4 @@
-"""crispz-moss - the CLI (batch / scripting mode) + a persistent HTTP server (FastAPI).
+"""crispz-minimax - the CLI (batch / scripting mode) + a persistent HTTP server (FastAPI).
 
 Pulled out of app.py (step 8). It imports the UI and the orchestration from cz_ui (which
 wires all the cz_* together); it redefines nothing of the pipeline. app.py merely calls
@@ -318,7 +318,7 @@ def cli_main(argv=None):
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="crispz-moss CLI (txt2img + upscale). No args: launches the Gradio UI.",
+        description="crispz-minimax CLI (txt2img + upscale). No args: launches the Gradio UI.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--cli", action="store_true", help="Force CLI mode (otherwise: launches the UI)")
@@ -426,7 +426,7 @@ def cli_main(argv=None):
                         help="Growth per side for --expand (fraction of the source size)")
     parser.add_argument("--expand-lora", action="store_true",
                         help="FLUX.3 only (crispz-flux3): its Outpaint LoRA is refused on "
-                             "MOSS-Image, the run stops with the reason. Use --expand alone.")
+                             "MiniMax-H3-Image, the run stops with the reason. Use --expand alone.")
     parser.add_argument("--expand-lora-weight", type=float, default=1.5, metavar="1.5",
                         help="LoRA strength for --expand-lora (the author advises 1.5)")
     parser.add_argument("--inpaint-mask", metavar="PATH",
@@ -478,7 +478,7 @@ def cli_main(argv=None):
     # as to break no existing script.
     parser.add_argument("--moss-model", "--flux3-model", "--klein-model",
                         "--zimage-model", dest="zimage_model",
-                        help="Override the model: a MOSS-Image HF repo or diffusers folder "
+                        help="Override the model: a MiniMax-H3-Image HF repo or diffusers folder "
                              "(default OpenMOSS-Team/MOSS-Image-SFT, Apache 2.0, public).")
     parser.add_argument("--moss-transformer", "--flux3-transformer",
                         "--klein-transformer", "--zimage-transformer", dest="zimage_transformer",
@@ -663,9 +663,9 @@ def cli_main(argv=None):
             parser.error("--expand expects a comma list among left,right,top,bottom (or 'all')")
         if args.expand_lora:
             # Refused BEFORE the 153 MB download: the FLUX.3 Outpaint LoRA's layers do not
-            # exist in MOSS-Image (the family guard would refuse it after the download).
+            # exist in MiniMax-H3-Image (the family guard would refuse it after the download).
             parser.error("--expand-lora is the FLUX.3 Outpaint LoRA, which runs in "
-                         "crispz-flux3, not on MOSS-Image: use --expand alone")
+                         "crispz-flux3, not on MiniMax-H3-Image: use --expand alone")
             res = _maybe_faceswap(cz_pipeline.outpaint_lora(
                 Image.open(args.input), sides, args.prompt, args.gen_steps, args.seed,
                 expand=args.expand_ratio, weight=args.expand_lora_weight))
