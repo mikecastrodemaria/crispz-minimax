@@ -1,39 +1,32 @@
-# crispz-moss : fork MOSS-Image de crispz-ideogram
+# crispz-minimax : fork MiniMax-H3-Image de crispz-moss
 
-- Base : `main` de crispz-ideogram (4d028a3, 0.1.0), avec ses 446 commits.
-- Remotes : `origin` = crispz-moss, `ideogram` = crispz-ideogram (pour reprendre les
+- Base : `wip/moss-engine` de crispz-moss (a7b9876, 1.0.0), avec ses 496 commits ;
+  branche locale renommée `main`.
+- Remotes : `origin` = crispz-minimax, `moss` = crispz-moss (pour reprendre les
   correctifs communs).
-- Pourquoi cette base et pas crispz-flux3 : l'éditeur de légende avec boîtes à la souris,
-  les presets de design, le magic prompt et le Describe, l'img2img et l'inpaint émulés
-  sur ce même VAE, l'offload « encodeur seul » déjà écrit pour un encodeur Qwen de 8 à
-  9B. Le détail est dans `CLAUDE.md` §3.
+- Pourquoi cette base et pas crispz-flux3 : l'édition par références, l'img2img et
+  l'inpaint émulés, l'offload « encodeur seul » avec le DiT garé pendant l'encodage, le
+  chargeur de fichiers uniques ComfyUI. Le détail est dans `CLAUDE.md` §3.
 
-## Ce qui change par rapport à crispz-ideogram
+## Ce qui change par rapport à crispz-moss (prévu, rien n'est encore écrit)
 
-| | crispz-ideogram | crispz-moss |
+| | crispz-moss | crispz-minimax |
 |---|---|---|
-| Modèle | Ideogram 4.0 (2 x 9,3B, nf4, licence non commerciale, repo gated) | MOSS-Image (5B, bf16, Apache 2.0, public) |
-| Moteur | `cz_ideogram.py` sur `Ideogram4Pipeline` de diffusers | `cz_moss.py` sur le pipeline OpenMOSS vendorisé (`third_party/moss_image`) |
-| Encodeur | Qwen3-VL-8B, 13 couches cachées | Qwen3.5-9B, dernière couche, bf16 ou nf4 |
-| Prompt négatif | aucun (branche inconditionnelle sans texte) | réel |
-| Guidance | planning par step (pic 7,0) | CFG constante (3,0) |
-| Légende | JSON Ideogram (boîtes en millièmes, vérificateur officiel) | layout MOSS (boîtes en pixels, compilé en coordonnées centrées) |
-| Fichiers uniques | refusés (pas de convertisseur) | ComfyUI / CivitAI acceptés (bf16, fp8, int8 ConvRot), 4 bits refusés |
-| Cloud | fonctions Ideogram 4.5 (cachées) | aucune |
-| img2img / inpaint | émulés | émulés (même technique, ordre de tokens FLUX) ; outpaint et reframe avec le draft placé et les bandes neuves déclarées |
-| LoRAs | mixin diffusers (`Ideogram4LoraLoaderMixin`) | chargeur maison par hooks (kohya, peft, moss-edit-lora, diffs ComfyUI) |
-| Édition par références | aucune (cloud Ideogram 4.5 caché) | LoRA Moss-Image-Edit, préfixe de références sur le DiT vendorisé (`cz_moss.EditPrefix`) |
-| Passerelles | Edit in crispz-flux3 | Edit in crispz-flux3, Compare in crispz-ideogram (layout traduit en légende Ideogram 4) |
-| Catalogue | aucun | MOSS-Image Character Catalog dans l'Asset Browser, « Send to crispz-moss » |
-| Offload | encodeur seul | encodeur seul, le DiT garé pendant l'encodage (`moss_encode_swap`), texte encodé avant tout VAE |
+| Modèle | MOSS-Image (5B, bf16, Apache 2.0) | MiniMax-H3-Image (33,1B, 20,1B en variante pruned, licence communautaire à territoire limité) |
+| Moteur | `cz_moss.py` sur le pipeline OpenMOSS vendorisé | `cz_minimax.py` sur `MiniMaxH3ImageModularPipeline` (diffusers 0.43.0) et une classe pruned maison |
+| Poids | bf16, fp8, int8 ConvRot | GGUF (unsloth, Abiray), quantifié en VRAM |
+| Encodeur | Qwen3.5-9B | Qwen3-VL-32B, couche 50, quantifié |
+| VAE | `AutoencoderKLFlux2` (32 canaux) | `AutoencoderKLMiniMaxH3Image` (24 canaux, décodeur ViT) |
+| Steps / guidance | 50 steps, CFG 3 | 6 steps fixes, guidance 1 |
+| Prompt négatif | réel | aucun |
+| Tailles | 1 à 2 Mpx | 4 à 16 Mpx |
+| Édition par références | LoRA Moss-Image-Edit | native, 1 à 16 images, `<Picture N>` |
+| Layout JSON à boîtes | oui | retiré |
+| LoRAs | chargeur maison | hors périmètre v0.1 |
 
-Les notes de crispz-ideogram sont gardées dans `FORK-ideogram.md` et
-`FORK-ideogram-CLAUDE.md` (pièges d'environnement, mesures), celles de crispz-flux3 dans
-`FORK-flux3.md` et `FORK-flux3-CLAUDE.md`.
+Les notes de crispz-moss sont gardées dans `FORK-moss.md` et `FORK-moss-CLAUDE.md`,
+celles des forks précédents dans `FORK-ideogram*.md`, `FORK-flux3*.md`, `FORK-klein.md`.
 
 ## Mesures
 
-Voir `README.md` (tableau RTX 5090) et `CLAUDE.md` §9 pour les passages détaillés. En
-bref, sur la même carte : 1024 en 43 s contre 61 s pour Ideogram 4, 2 Mpx en 102 s contre
-394 s pour 4 Mpx, pic 15 Go contre 23 ; A/B texte 24 rendus sur 24 exacts. Le prix : 27 Go
-de poids bf16 (un encodeur de 16,8 Go en RAM entre deux prompts) contre 15 Go nf4.
+Aucune pour l'instant : voir `CLAUDE.md` §9.

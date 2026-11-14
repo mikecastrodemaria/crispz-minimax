@@ -1,38 +1,57 @@
-# crispz-moss
+# crispz-minimax
 
-The **MOSS-Image** studio of the crispz family: text in images and design (posters,
-logos, packaging, slides, covers, dense typography), Fooocus-style, **100% local**.
-MOSS-Image (OpenMOSS, Fudan, October 2026) is a 5B open-weights model under **Apache
-2.0**: commercial use allowed. Measured against Ideogram 4 on the same posters (24
-renders), it rendered every requested text exactly, faster, and with no licence strings
-attached. The other crispz studios stay better at photos and editing.
+The **MiniMax-H3-Image** studio of the crispz family: text-to-image and editing with up
+to 16 reference images in one checkpoint, up to 16 megapixels without an upscaler, in 6
+steps, Fooocus-style, **100% local**. A fork of
+[crispz-moss](https://github.com/mikecastrodemaria/crispz-moss).
 
-> **1.0.0, 2026-11-05.** The six lots of the specification are in and measured on an
-> RTX 5090: the engine and the single-file loaders, the layout editor, the magic prompt
-> and Describe, the emulated img2img / inpaint / outpaint, LoRAs and editing with
-> references, the local tools and the hand-overs, the GPU end-to-end test and this
-> documentation. The specification and the work log (every measurement, every decision)
-> are in `CLAUDE.md`.
+> **Work in progress, 2026-11-14.** The fork has just been cut. The engine is not
+> written yet and nothing has been measured: the code and every section below
+> "Licence" are still those of crispz-moss and describe MOSS-Image, not MiniMax-H3-Image.
+> The specification and the work log are in `CLAUDE.md`, the differences with
+> crispz-moss in `FORK.md`.
 
 ## Licence: read this first
 
-The chain, as stated at the source (Hugging Face model cards and LICENSE files, GitHub,
-read on 2026-11-05):
+**Where you live decides whether you may use this model.** MiniMax-H3-Image is released
+under the
+[MiniMax-H3-Image Community License Agreement](https://huggingface.co/MiniMaxAI/MiniMax-H3-Image/blob/main/LICENSE)
+(read on 2026-11-14). This is a summary, not legal advice: the licence text is what
+counts.
 
-| Component | Licence | What it means |
-|---|---|---|
-| MOSS-Image weights (`OpenMOSS-Team/MOSS-Image-SFT`, `-Base`) and bundled pipeline code | **Apache 2.0** (card and LICENSE file) | commercial use allowed; keep the attribution and say what you changed |
-| Pipeline code vendored in `third_party/moss_image/` | Apache 2.0 (OpenMOSS GitHub) | unchanged copy, with its LICENSE and origin commit |
-| Text encoder Qwen3.5-9B (`Qwen/Qwen3.5-9B`, Alibaba Cloud) | Apache 2.0 (card and LICENSE) | same; the SFT card names no encoder, the identification comes from its config (`Qwen3_5Model`) and the Comfy-Org file names |
-| VAE (the FLUX.2 "small decoder", `black-forest-labs/FLUX.2-klein-4B`) | Apache 2.0 at the repo level (card: "fully open under Apache 2.0"); no separate licence file for the `vae/` folder | the 9B klein is non-commercial, the 4B and its VAE are not |
-| Comfy-Org repack and its LoRAs, DeBand, the DMD LoRA | Apache 2.0 badges | read each card before client use |
-| Moss-Image-Edit LoRA (chinoll; the Comfy-Org `moss_image_edit_lora_rank_64` file) | **no licence stated for the weights** (the training code is GPLv3) | the app says so wherever it fetches it; not for a client deliverable until the author says |
-| Character Catalog (hide1) | MIT for the author's data; the characters and renders are third-party IP | reference only, not for client work |
-| This app's code | CC BY-NC 4.0 ([LICENSE.txt](LICENSE.txt)) | |
+- **Territory.** The licence grants rights only inside its "Applicable Territory":
+  worldwide **except the European Union, the United Kingdom, the Republic of Korea and
+  the United States of America** (sections I.3, I.5 and II). Section III.4 says the model
+  and its outputs may not be used, reproduced, modified, distributed or displayed
+  outside that territory. If you are in one of those places, the licence does not cover
+  you: MiniMax asks you to request a separate authorization at
+  [platform.minimax.io/license](https://platform.minimax.io/license).
+- **Revenue and hosting.** A separate, prior written authorization is also required if
+  the annualized revenue of you or your affiliates exceeds 1 million USD, or if you
+  provide a hosted service to third parties (section IV).
+- **Acceptable use.** The licence comes with an Acceptable Use Policy.
+
+What this means for crispz-minimax:
+
+- **This repository contains code only.** It ships no MiniMax weights and never
+  redistributes them. The app downloads the files you choose from Hugging Face, on your
+  machine, under your account and your responsibility.
+- This code is published on GitHub and can be cloned from anywhere. Being able to
+  install it does not mean the model licence applies to you: **each user is responsible
+  for checking that they are allowed to use MiniMax-H3-Image where they are.**
+- The quantized files the app can load (GGUF and others, from Comfy-Org, unsloth,
+  Abiray and so on) are derivatives of MiniMax-H3-Image and carry the same licence and
+  the same territory.
+
+| Component | Licence |
+|---|---|
+| MiniMax-H3-Image weights and every quantized derivative | MiniMax-H3-Image Community License Agreement (territory above) |
+| Text encoder (Qwen3-VL-32B, shipped by MiniMax in `MiniMaxAI/MiniMax-H3`) | read the MiniMax-H3 licence and its `docs/QA-about-License.md`; not checked here yet |
+| diffusers (pipeline code) | Apache 2.0 |
+| This app's code | CC BY-NC 4.0 ([LICENSE.txt](LICENSE.txt)) |
 
 **Nothing leaves the machine.** There is no cloud function at all. Ollama, when used, is
-a local server (its URL is logged at every call); the hand-overs call crispz-flux3 and
-crispz-ideogram on this machine.
+a local server (its URL is logged at every call).
 
 ## What it does
 
