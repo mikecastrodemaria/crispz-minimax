@@ -138,8 +138,12 @@ IMPROVE_POSITIVE = (
     "vivid and detailed while keeping the SAME subject and intent. Prefer concrete visual "
     "terms; keep the format of the input (a tag list stays a tag list, prose stays prose, "
     "see INPUT FORMAT when given); do not pad it with generic quality filler (masterpiece, "
-    "best quality, 8k). Output ONLY the improved prompt, on one line, no preamble, no "
-    "quotes, no explanation.\n\nPROMPT: {prompt}")
+    "best quality, 8k). The image model (MiniMax-H3-Image) follows long descriptions "
+    "closely: write in ENGLISH whatever the input language, describe the whole image "
+    "(subject, setting, composition, light, materials, colours), and give any text to be "
+    "rendered in the image word for word between double quotes. Output ONLY the improved "
+    "prompt, on one line, no preamble, no quotes around it, no explanation."
+    "\n\nPROMPT: {prompt}")
 
 # custom-34: the input format is detected in code (small models guess it badly, above all
 # with braces or wildcards in the text) and stated to the model. Setting `format`:

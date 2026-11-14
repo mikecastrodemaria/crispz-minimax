@@ -34,21 +34,19 @@ def test_remove_bg_failure_is_said(monkeypatch):
 
 
 def test_the_edit_tab_and_input_mode_are_offered():
-    """Lot 4b: the 'Edit (references)' tab and input mode are offered (the Moss-Image-Edit
-    LoRA path), next to the Edit in crispz-flux3 hand-over; the tab says what the LoRA
-    is and that its weights carry no stated licence."""
+    """The 'Edit (references)' tab and input mode are offered: editing is native on
+    MiniMax-H3-Image. The hand-over tabs to other crispz apps are hidden."""
     import gradio as gr
     demo = cz_ui.build_ui()
     tabs = {b.label: b.visible for b in demo.blocks.values() if isinstance(b, gr.Tab)}
     assert tabs.get(cz_ui.EDIT_MODE) is True
-    assert tabs.get("Edit in crispz-flux3") is True and tabs.get("Vectorize (SVG)") is True
+    assert tabs.get("Edit in crispz-flux3") is False and tabs.get("Vectorize (SVG)") is True
     radios = [b for b in demo.blocks.values()
               if isinstance(b, gr.Radio) and b.label == "Input mode"]
     assert radios and radios[0].visible is True and cz_ui.EDIT_MODE in radios[0].choices[1]
     texts = " ".join(str(getattr(b, "value", "")) for b in demo.blocks.values()
                      if isinstance(b, gr.Markdown))
-    assert "Moss-Image-Edit LoRA" in texts and "no licence" in texts
-    # the output size switch (Ref 1's size, or the Settings width / height), off by default
+    assert "<Picture 1>" in texts and "native" in texts
     boxes = [b for b in demo.blocks.values()
              if isinstance(b, gr.Checkbox) and b.label == "Output size from Settings"]
     assert len(boxes) == 1 and boxes[0].value is False and "Ref 1" in boxes[0].info

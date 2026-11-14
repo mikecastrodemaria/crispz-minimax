@@ -453,7 +453,7 @@ def validate_spec(spec, op="gen"):
         # instead of letting the caller believe it acts (degradation announced, never silent).
         warnings.append("'negative' ignored by this model - see supports.negative")
         out["negative"] = ""
-    for key, default in (("width", 1024), ("height", 1024)):
+    for key, default in (("width", 2048), ("height", 2048)):
         try:
             v = int(spec.get(key) or default)
         except (TypeError, ValueError):

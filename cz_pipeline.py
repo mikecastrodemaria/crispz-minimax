@@ -2486,6 +2486,9 @@ def _family_refusal(path):
     if fam == "ideogram":
         return ("it is an Ideogram 4 checkpoint, which runs in crispz-ideogram: it "
                 "shares neither layers nor weights with MiniMax-H3-Image")
+    if fam == "moss":
+        return ("it is a MOSS-Image checkpoint, which runs in crispz-moss: it shares "
+                "neither layers nor weights with MiniMax-H3-Image")
     return None
 
 
@@ -2499,7 +2502,7 @@ def _flux3_file_refusal(path):
     if any(_lora_side(n) for n in names[:200]):
         return "it is a LoRA, not a checkpoint: put it in the LoRA folder"
     fam = _file_family(path)
-    if fam in ("flux2", "flux3", "ideogram"):
+    if fam in ("flux2", "flux3", "ideogram", "moss"):
         return _family_refusal(path)
     if fam != engine.FAMILY:
         if engine.is_text_encoder_file(path):

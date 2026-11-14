@@ -86,7 +86,8 @@ def test_refusal_names_the_reason_and_the_studio_that_runs_the_file():
     _ckpt("moss.safetensors", family="moss")
 
     def check(_saved):
-        assert P.checkpoint_refusal("moss.safetensors") is None
+        why = P.checkpoint_refusal("moss.safetensors")      # another family here
+        assert why and "crispz-moss" in why, why
         why = P.checkpoint_refusal("ideo.safetensors")
         assert why and "Ideogram 4" in why and "crispz-ideogram" in why, why
         why = P.checkpoint_refusal("flux3.safetensors")
@@ -182,7 +183,7 @@ def test_a_preset_switches_its_own_base_repo():
         assert "NOT switched" not in status, status
         assert "Base model switched" in status, status
         assert "next **Generate**" in status and "released" in status, status
-        assert "Apache 2.0" in status, "the base repo's note must follow the swap"
+        assert "Community License" in status, "the base repo's note must follow the swap"
         assert saved.get(P.CFG_MODEL_KEY) == U.FLUX3_BASE, saved
     _with_lib(check)
 
@@ -225,18 +226,6 @@ def test_saving_records_the_base_repo():
     print("OK test_saving_records_the_base_repo")
 
 
-def test_the_base_repo_is_announced_before_the_run():
-    """Two MOSS-Image checkpoints (SFT, the default, and Base): both offered, and each
-    says what it costs BEFORE the run: the Apache 2.0 licence, the size, the steps."""
-    repo = U.FLUX3_DISTILLED
-    assert repo == P.DEFAULT_BASE_REPO and U.FLUX3_BASE != repo
-    assert repo in U.ZIMAGE_BASE_REPOS and U.FLUX3_BASE in U.ZIMAGE_BASE_REPOS
-    for r in (repo, U.FLUX3_BASE):
-        note = U.BASE_REPO_NOTES[r]
-        assert "Apache 2.0" in note and "50 steps" in note and "27 GB" in note, note
-        assert r in note and "NON-COMMERCIAL" not in note
-
-
 def test_choosing_a_base_repo_retries_its_dimension():
     """A repo's dimension is cached, failures included. A gated repo refused before the
     licence is accepted left a None stuck there for the whole session. Choosing it counts
@@ -247,39 +236,9 @@ def test_choosing_a_base_repo_retries_its_dimension():
         assert U.FLUX3_BASE not in P._BASE_DIM_CACHE, \
             "the cached failure must be purged when the repo is chosen again"
         # and a MOSS repo never needs the Hub for its width anyway: 3072
-        assert P._base_hidden_dim(U.FLUX3_BASE) == 3072
+        assert P._base_hidden_dim(U.FLUX3_BASE) == P.engine.HIDDEN_SIZE
         P._BASE_DIM_CACHE.pop(U.FLUX3_BASE, None)
     _with_lib(check)
-
-
-def test_offload_is_forced_when_the_base_cannot_fit():
-    """klein-9B set whole on a 32 GB card loaded, then died on the first diffusion step
-    on 'CUDA error: unknown error', which does not even name the VRAM. A config that
-    CANNOT work is corrected beforehand. On FLUX.3 the weight depends on the precision."""
-    old = (P.DEVICE, P._total_vram_gb, P.OFFLOAD_MODE, P.BASE_REPO, P.ZIMAGE_TRANSFORMER,
-           P.PRECISION)
-    try:
-        P.DEVICE = "cuda"
-        P.OFFLOAD_MODE = "none"
-        P.BASE_REPO = U.FLUX3_DISTILLED
-        P.ZIMAGE_TRANSFORMER = None
-        P.PRECISION = "bf16"
-        P._total_vram_gb = lambda: 31.8        # RTX 5090
-        assert P._effective_offload() == "none", "bf16 fits a 32 GB card whole"
-        P._total_vram_gb = lambda: 16.0        # RTX 5080 / 4080
-        assert P._effective_offload() == "model", "bf16 does not fit 16 GB: offload forced"
-        P.PRECISION = "nvfp4"
-        assert P._effective_offload() == "model", "13.5 + 4 GB of margin: still not 16"
-        # a GGUF override is always streamed (it does not move onto the GPU with .to)
-        P._total_vram_gb = lambda: 80.0
-        P.PRECISION = "bf16"
-        assert P._effective_offload() == "none"
-        P.ZIMAGE_TRANSFORMER = os.path.join(TMP, "flux3-Q4.gguf")
-        assert P._effective_offload() == "model"
-    finally:
-        (P.DEVICE, P._total_vram_gb, P.OFFLOAD_MODE, P.BASE_REPO, P.ZIMAGE_TRANSFORMER,
-         P.PRECISION) = old
-    print("OK test_offload_is_forced_when_the_base_cannot_fit")
 
 
 def test_gated_repo_error_says_what_to_do():

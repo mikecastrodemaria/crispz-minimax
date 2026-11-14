@@ -36,7 +36,7 @@ def test_caps_shape():
 # ----------------------------------------------------------- validate_spec ---
 def test_validate_spec_minimal_and_defaults():
     spec, warnings = cp.validate_spec({"protocol": 1, "prompt": "a cat"})
-    assert spec["width"] == 1024 and spec["height"] == 1024
+    assert spec["width"] == 2048 and spec["height"] == 2048
     assert spec["seed"] == -1 and spec["steps"] is None
     assert warnings == []
 
@@ -119,22 +119,11 @@ def test_caps_refs_follow_omni_support_and_config():
         with _omni_config():
             assert cp.caps_dict()["supports"]["refs"] is False
         return
-    # LoRA absent -> no refs, no edit, whatever OMNI_DEFAULT (the base repo) says
-    with _omni_config(""):
-        assert cp.caps_dict()["supports"]["refs"] is False
-        assert cp.caps_dict()["supports"]["edit"] is False
+    # crispz-minimax: editing with references is native, nothing to fetch first
     with _omni_config():
         caps = cp.caps_dict()
         assert caps["supports"]["refs"] is True
         assert caps["supports"]["max_refs"] == cp.MAX_REFS
-
-
-def test_validate_refs_dropped_with_warning_when_unavailable():
-    with _omni_config(""):                      # the edit LoRA not on disk
-        spec, warnings = cp.validate_spec(
-            {"protocol": 1, "prompt": "x", "refs": ["a.png"]})
-    assert spec["refs"] == []
-    assert any("ref(s) ignored" in w and "MOSS-Image" in w for w in warnings), warnings
 
 
 def test_validate_refs_missing_file_is_code_2():

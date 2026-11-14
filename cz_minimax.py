@@ -421,6 +421,11 @@ LICENCE_NOTE = ("MiniMax-H3-Image Community License: rights are granted worldwid
                 "(separate authorization: https://platform.minimax.io/license). You are "
                 "responsible for checking that you may use the model where you are.")
 
+# Other crispz families, named so that their files are refused with the app that runs them.
+_MOSS_MARKERS = (".video_embedder.", ".text_embedder.", ".shared_block_modulation.",
+                 ".final_linear_video.", ".proj.ffn_up_gate.", ".proj.ffn_down.")
+_IDEOGRAM_MARKERS = (".llm_cond_proj.", ".llm_cond_norm.", ".embed_image_indicator.",
+                     ".unconditional_transformer.")
 _TEXT_ENCODER_MARKERS = ("model.layers.0.self_attn.q_proj.weight", "model.embed_tokens.weight")
 
 
@@ -437,6 +442,11 @@ def family_from_keys(keys):
     if "final_layer.video_out.weight" in keys and "video_patch_proj.weight" in keys \
             and not any(k.startswith("audio_patch_proj") for k in keys):
         return FAMILY
+    dotted = ["." + k for k in keys if isinstance(k, str)]
+    if any(m in k for k in dotted for m in _MOSS_MARKERS):
+        return "moss"
+    if any(m in k for k in dotted for m in _IDEOGRAM_MARKERS):
+        return "ideogram"
     try:
         import cz_flux3
         return cz_flux3.family_from_keys(keys)
