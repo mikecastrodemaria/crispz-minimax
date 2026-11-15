@@ -7,8 +7,8 @@ steps, Fooocus-style, **100% local**. A fork of
 
 > **0.1.0, 2026-11-14.** First working version: text to image, editing with references,
 > emulated img2img / inpaint / outpaint, measured on an RTX 5090. Built in one pass and
-> not yet used day to day: expect rough edges. The specification, the measurements and
-> the open points are in `CLAUDE.md`, the differences with crispz-moss in `FORK.md`.
+> not yet used day to day: expect rough edges. The measurements and the known limits are
+> below, the differences with crispz-moss in `FORK.md`.
 
 ## Licence: read this first
 

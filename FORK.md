@@ -6,7 +6,7 @@
   correctifs communs).
 - Pourquoi cette base et pas crispz-flux3 : l'édition par références, l'img2img et
   l'inpaint émulés, l'offload « encodeur seul » avec le DiT garé pendant l'encodage, le
-  chargeur de fichiers uniques ComfyUI. Le détail est dans `CLAUDE.md` §3.
+  chargeur de fichiers uniques ComfyUI.
 
 ## Ce qui change par rapport à crispz-moss
 
@@ -25,8 +25,8 @@
 | Layout JSON à boîtes | oui | masqué (code encore présent) |
 | LoRAs | chargeur maison | hors périmètre v0.1 |
 
-Les notes de crispz-moss sont gardées dans `FORK-moss.md` et `FORK-moss-CLAUDE.md`,
-celles des forks précédents dans `FORK-ideogram*.md`, `FORK-flux3*.md`, `FORK-klein.md`.
+Les notes de crispz-moss sont gardées dans `FORK-moss.md`, celles des forks précédents
+dans `FORK-ideogram.md`, `FORK-flux3.md` et `FORK-klein.md`.
 
 ## Mesures (RTX 5090, GGUF UD-Q5_K_XL, encodeur Q4_K_M, 14/11/2026)
 
@@ -39,7 +39,7 @@ celles des forks précédents dans `FORK-ideogram*.md`, `FORK-flux3*.md`, `FORK-
 | Inpaint 2048 x 2048 | 40 à 50 s |
 | img2img 2048 x 2048, force 0,5 | 12 s |
 
-Le détail, les choix faits en route et ce qui n'est pas vérifié : `CLAUDE.md` §9.
+Le tableau complet et les limites connues : `README.md`.
 
 ## Pièges à connaître
 
