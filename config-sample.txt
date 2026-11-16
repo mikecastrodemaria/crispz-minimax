@@ -267,5 +267,13 @@
     "_minimax_model_help": "Base repo (HF) or a local folder laid out like it: it lends the VAE, the tokenizer, the processor and the configs. MiniMax-H3-Image Community License: rights granted worldwide EXCEPT in the European Union, the United Kingdom, the Republic of Korea and the United States (https://platform.minimax.io/license). Env MINIMAX_MODEL.",
     "minimax_model": "MiniMaxAI/MiniMax-H3-Image",
     "_minimax_transformer_help": "The transformer: a GGUF file of the PRUNED MiniMax-H3-Image DiT (unsloth/MiniMax-H3-Image-GGUF, Abiray/MiniMax-H3-Image-GGUF), kept quantized on the card. Empty = the first one found in ./checkpoints, else minimax_h3_image_pruned-UD-Q5_K_XL.gguf downloaded into the Hugging Face cache (15.5 GB). Safetensors builds (fp8, int8 ConvRot, nvfp4) are refused by name. Env MINIMAX_TRANSFORMER.",
-    "minimax_transformer": ""
+    "minimax_transformer": "",
+    "_minimax_base_repos_help": "The MiniMax-H3-Image base repos offered in the Models menu: HF repo ids or local folders laid out like the official repo. The first is the default.",
+    "minimax_base_repos": ["MiniMaxAI/MiniMax-H3-Image"],
+    "_minimax_precision_help": "Precision of the transformer: 'gguf' only (the GGUF file stays quantized on the card). Env MINIMAX_PRECISION.",
+    "minimax_precision": "gguf",
+    "_moss_encode_swap_help": "Read by cz_moss.py, kept from the MOSS-Image engine this app forked from: moot with MiniMax-H3-Image. Encoder-only offload swaps the DiT to RAM while the text encoder is on the card. Env MOSS_ENCODE_SWAP.",
+    "moss_encode_swap": true,
+    "_moss_edit_ref_max_edge_help": "Read by cz_moss.py, kept from the MOSS-Image engine this app forked from: moot with MiniMax-H3-Image. Long side cap of the reference images of the MOSS edit path. Env MOSS_EDIT_REF_MAX_EDGE.",
+    "moss_edit_ref_max_edge": 2048
 }
