@@ -88,14 +88,14 @@ class _Variant:
         return False
 
 
-# CivitAI labels the base "MOSS Image" (read on its own mirror page, 2026-11-03): cz_ui
+# CivitAI labels the base "MiniMax H3 Image" (read on its own mirror page, 2026-11-03): cz_ui
 # matches a 'mossimage' PREFIX on the normalised label, which both spellings below
 # satisfy. FLUX and Ideogram LoRAs do not load here.
 _PAYLOAD = {"items": [
     _model(1, "Foreign", [_ver(11, "SDXL 1.0")]),
     _model(2, "Klein4B", [_ver(22, "Flux.2 Klein 4B-base")]),
-    _model(3, "Mossa", [_ver(33, "MOSS Image")]),
-    _model(4, "Mossb", [_ver(44, "MOSS-Image SFT")]),
+    _model(3, "Mossa", [_ver(33, "MiniMax H3 Image")]),
+    _model(4, "Mossb", [_ver(44, "MiniMax H3 Image Pruned")]),
     _model(5, "Flux3", [_ver(55, "FLUX.3 Image Klein")]),
 ]}
 
@@ -124,7 +124,7 @@ def test_the_moss_versions_come_first():
     own order. FLUX.2 and FLUX.3 ones rank with the foreign bases: they do not load here."""
     with _Api(_PAYLOAD):
         _q, dd, state, status = cz_ui._ui_civitai_lora_search("x", False)
-    assert _bases(dd) == ["MOSS Image", "MOSS-Image SFT", "SDXL 1.0", "Flux.2 Klein 4B-base",
+    assert _bases(dd) == ["MiniMax H3 Image", "MiniMax H3 Image Pruned", "SDXL 1.0", "Flux.2 Klein 4B-base",
                           "FLUX.3 Image Klein"], _bases(dd)
     assert len(state) == 5
 
@@ -132,20 +132,20 @@ def test_the_moss_versions_come_first():
 def test_moss_only_drops_the_other_families_flux_included():
     with _Api(_PAYLOAD):
         _q, dd, _s, _st = cz_ui._ui_civitai_lora_search("x", True)
-    assert _bases(dd) == ["MOSS Image", "MOSS-Image SFT"], _bases(dd)
+    assert _bases(dd) == ["MiniMax H3 Image", "MiniMax H3 Image Pruned"], _bases(dd)
 
 
 def test_the_family_prefix_needs_no_hub_access():
     """One family, so the prefix is a constant: no network, nothing to degrade."""
     fam, cur = cz_ui._klein_base_prefixes()
-    assert fam == cur == "mossimage", (fam, cur)
+    assert fam == cur == "minimaxh3image", (fam, cur)
 
 
 def test_no_result_names_the_filter_as_the_likely_cause():
     with _Api({"items": [_model(1, "Foreign", [_ver(11, "SDXL 1.0")])]}):
         _q, dd, state, status = cz_ui._ui_civitai_lora_search("x", True)
     assert dd["choices"] == [] and state == {}
-    assert "MOSS only" in status, status
+    assert "H3 only" in status, status
 
 
 class _Stream:

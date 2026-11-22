@@ -910,7 +910,7 @@ def _te_hint():
             f"{'/'.join(str(s) for s in sizes)} wide, and **{cz_pipeline.BASE_REPO}** needs "
             f"{width}. {names}"
             + (f" -- made for {', '.join(made)}: pick that base or one of its checkpoints "
-               f"to use them." if made else ". Pick a base of their size to use them."))
+               f"to use them." if made else ". They do not fit this model."))
 
 
 def _ui_refresh_text_encoders():
@@ -1405,9 +1405,8 @@ def _klein_base_prefixes():
     load on a 9B base, cz_pipeline refuses it with its reason. The variant is only used to
     ORDER and to filter on request; reading it must never break a search, hence the except.
     """
-    # One family: CivitAI labels the base model "MOSS Image" (its own mirror page and the
-    # community merges, read on 2026-11-03).
-    fam = cz_civitai._norm_base("MOSS Image")
+    # One family: CivitAI labels the base model "MiniMax H3 Image" (read on 2026-11-22).
+    fam = cz_civitai._norm_base("MiniMax H3 Image")
     return fam, fam
 
 
@@ -1434,7 +1433,7 @@ def _ui_civitai_lora_search(query, klein_only):
         cands = [c for c in cands
                  if cz_civitai._norm_base(c.get("baseModel")).startswith(fam)]
     if not cands:
-        hint = (" with a MOSS Image base, untick 'MOSS only' to see the other bases "
+        hint = (" with a MiniMax H3 Image base, untick 'H3 only' to see the other bases "
                 "(they will not load here)." if klein_only else
                 ". Check the spelling, or the model may not be on CivitAI.")
         return (gr.update(value=q), gr.update(choices=[], value=None), {},
@@ -5312,7 +5311,7 @@ def build_ui():
                             ckpt_extra_dir_tb = gr.Textbox(
                                 value=cz_pipeline.CHECKPOINTS_EXTRA_DIR,
                                 label="Extra checkpoints folder (optional)",
-                                placeholder="e.g. D:\\models\\MOSS",
+                                placeholder="e.g. D:\\models\\MiniMax-H3",
                                 info="Merged into the checkpoint list above. Single-file MiniMax-H3-Image DiTs "
                                      "in the ComfyUI / CivitAI layout (bf16, fp8, int8 ConvRot) load; "
                                      "the 4-bit builds are refused with the reason. Leave empty to disable.")
@@ -5373,9 +5372,8 @@ def build_ui():
                                 te_dd = gr.Dropdown(
                                     choices=_te_choices(), value=cz_pipeline.TEXT_ENCODER or "",
                                     allow_custom_value=True, label="Text encoder",
-                                    info="A Qwen3.5-9B replacement (a finetune, a repack): a "
-                                         "transformers repo / folder, or a single ComfyUI / CivitAI "
-                                         "file (bf16, int8 ConvRot). Default = the base repo's own.")
+                                    info="Another build of the Qwen3-VL-32B encoder (5120 wide, the 50 layers "
+                                         "the DiT reads): a GGUF file. Default = the app's own file.")
                                 with gr.Row():
                                     te_refresh_btn = gr.Button("Refresh encoders", size="sm", scale=1)
                                 te_status = gr.Markdown(_te_hint())
@@ -5385,7 +5383,7 @@ def build_ui():
                             lora_extra_dirs_tb = gr.Textbox(
                                 value=";".join(cz_pipeline.LORAS_EXTRA_DIRS),
                                 label="Extra LoRA folders (optional, ';' separated)",
-                                placeholder="e.g. F:\\sdlibs\\models\\Lora\\_FLUX2",
+                                placeholder="e.g. F:\\sdlibs\\models\\Lora\\_MiniMaxH3",
                                 info="Merged into the LoRA lists (slots, edit presets, "
                                      "protocol caps). Same file name: the main folder wins. "
                                      "Config `loras_extra_dirs`.")
@@ -5444,7 +5442,7 @@ def build_ui():
                                     civ_lora_q = gr.Textbox(
                                         show_label=False, scale=3, container=False,
                                         placeholder="LoRA name to search on CivitAI")
-                                    civ_lora_konly = gr.Checkbox(value=True, label="MOSS only",
+                                    civ_lora_konly = gr.Checkbox(value=True, label="H3 only",
                                                                  scale=1)
                                     civ_lora_search_btn = gr.Button("Search", size="sm",
                                                                     variant="primary", scale=1,

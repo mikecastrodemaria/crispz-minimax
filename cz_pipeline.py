@@ -1093,7 +1093,7 @@ def set_zimage_transformer(path):
 # hidden wide): an encoder only fits if it has the same family, the same width and the same
 # number of layers as the base repo's. An "abliterated" or fine-tuned Qwen3 of the same size
 # plugs in as is. That is checked on the config, BEFORE reading 8 GB.
-_ENCODER_WIDTH_FOR = {2560: "FLUX.2-klein-4B (Qwen3-4B)", 4096: "FLUX.2-klein-9B (Qwen3-8B)"}
+_ENCODER_WIDTH_FOR = {}      # one model here: no other base to point an encoder of another width to
 
 
 def _split_hf_src(src):
