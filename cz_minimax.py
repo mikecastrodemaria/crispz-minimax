@@ -440,6 +440,9 @@ def family_from_keys(keys):
     """'minimax' for a MiniMax-H3-Image transformer file, else what the family markers of
     the other crispz engines say (so that their files are refused by name)."""
     keys = set(keys or ())
+    import cz_minimax_lora
+    if cz_minimax_lora.is_h3_lora_keys(keys):
+        return FAMILY
     if "final_layer.video_out.weight" in keys and "video_patch_proj.weight" in keys \
             and not any(k.startswith("audio_patch_proj") for k in keys):
         return FAMILY
@@ -456,7 +459,13 @@ def family_from_keys(keys):
 
 
 def family_from_header(hdr):
-    return family_from_keys(list((hdr or {}).keys()))
+    hdr = hdr or {}
+    # a LoRA in diffusers names: only the width tells MiniMax-H3 from the other families
+    import cz_minimax_lora
+    shapes = {k: v.get("shape") for k, v in hdr.items() if isinstance(v, dict)}
+    if cz_minimax_lora.is_h3_lora_keys(list(hdr.keys()), shapes):
+        return FAMILY
+    return family_from_keys(list(hdr.keys()))
 
 
 def is_engine_repo(repo):
@@ -913,18 +922,38 @@ class MiniMaxPipe:
         self._ctx = None
         self.released = True
 
-    # -- not on this model ---------------------------------------------------------------
+    # -- LoRAs: crispz-minimax's own loader, cz_minimax_lora ---------------------------
     def set_loras(self, wanted):
-        if wanted:
-            raise RuntimeError("LoRAs are not supported on MiniMax-H3-Image yet")
-        self.applied_loras = []
+        """[(path, weight), ...] as forward hooks on the DiT. The same files with other
+        weights only re-scale; anything else unloads and re-applies."""
+        import cz_minimax_lora
+        wanted = [(p, float(w)) for p, w in (wanted or [])]
+        tr = self._mp.transformer
+        have = list(self.applied_loras)
+        if wanted and [p for p, _ in wanted] == [p for p, _ in have]:
+            cz_minimax_lora.rescale(tr, [w for _, w in wanted])
+            self.applied_loras = wanted
+            return
+        if not wanted:
+            cz_minimax_lora.unload(tr)
+            self.applied_loras = []
+            return
+        try:
+            cz_minimax_lora.apply(tr, wanted)
+        except Exception:
+            cz_minimax_lora.unload(tr)
+            self.applied_loras = []
+            raise
+        self.applied_loras = wanted
 
     def edit_loras_applied(self):
         return []
 
     def load_lora_weights(self, *a, **k):
-        raise RuntimeError("LoRAs are not supported on MiniMax-H3-Image yet")
+        raise RuntimeError("MiniMax-H3-Image has no diffusers LoRA loader: crispz-minimax "
+                           "applies LoRAs with its own, MiniMaxPipe.set_loras([(path, weight), ...])")
 
+    # -- not on this model ---------------------------------------------------------------
     def magic_prompt(self, *a, **k):
         raise RuntimeError("the local magic prompt is not available on this engine: its text "
                            "encoder ships without a language head. Use Ollama.")

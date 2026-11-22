@@ -5380,7 +5380,7 @@ def build_ui():
                                     te_refresh_btn = gr.Button("Refresh encoders", size="sm", scale=1)
                                 te_status = gr.Markdown(_te_hint())
 
-                        with gr.Accordion("\U0001F9E9 LoRA (combinable)", open=False, visible=False):   # no LoRA on this model yet
+                        with gr.Accordion("\U0001F9E9 LoRA (combinable)", open=False):
                             lora_dir_tb = gr.Textbox(value=cz_pipeline.LORAS_DIR, label="LoRA folder")
                             lora_extra_dirs_tb = gr.Textbox(
                                 value=";".join(cz_pipeline.LORAS_EXTRA_DIRS),

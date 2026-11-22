@@ -1700,11 +1700,11 @@ def _lora_unsupported(path):
         return (f"{_FAMILY_LABEL.get(fam, fam)} LoRA - its layers do not exist in "
                 f"MiniMax-H3-Image, nothing would apply. It works in {home}")
     if fam == engine.FAMILY:
-        # Lot 4: crispz-minimax's own loader (cz_moss_lora) reads the kohya, peft,
-        # moss-edit-lora and ComfyUI diff layouts; what it refuses, it names (a control
-        # LoRA that replaces a layer, a file with no LoRA tensor at all).
-        import cz_moss_lora
-        return cz_moss_lora.refusal(path)
+        # crispz-minimax's own loader (cz_minimax_lora) reads the ComfyUI / ai-toolkit,
+        # kohya and diffusers layouts; what it refuses, it names (a DiffSynth file, a
+        # file that replaces a layer, a file with no LoRA tensor at all).
+        import cz_minimax_lora
+        return cz_minimax_lora.refusal(path)
     algo = _lycoris_algo(path)
     if algo and algo != "LoKr":
         return (f"LyCORIS {algo} - only LoKr is supported here; peft recognises none "

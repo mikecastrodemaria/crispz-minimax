@@ -65,7 +65,14 @@ a local server (its URL is logged at every call).
 Fixed by the model, so not offered: steps (always 6), guidance (no CFG), sampler and
 schedule, negative prompt. Asking for another value is ignored and said in the log.
 
-Not in this version: LoRAs (diffusers has no loader for this model yet), the safetensors
+**LoRAs** are applied by the app's own loader (diffusers has none for this model), as
+hooks on the quantized DiT: the ComfyUI / ai-toolkit, kohya and diffusers file layouts
+load, the weight slider re-scales live. MiniMax-H3 video LoRAs have the same layer names
+and sizes and load too (their audio keys are skipped and said); how well they carry over
+is not measured. DiffSynth files are refused by name. A step-distillation LoRA (pDMD
+2 steps) loads, but the app still runs the model's 6 steps.
+
+Not in this version: the safetensors
 builds (fp8, int8 ConvRot, nvfp4), the dense 66 GB release checkpoint, the MOSS-Image
 layout editor and character catalog of crispz-moss (their code is still in the repository,
 hidden and unused).

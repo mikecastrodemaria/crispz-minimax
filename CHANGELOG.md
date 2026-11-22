@@ -5,6 +5,19 @@ below it are crispz-ideogram's, crispz-flux3's and crispz-klein's history, kept 
 The app version lives in `cz_core.py` (`APP_VERSION`) and is shown in the browser tab title.
 
 
+## Unreleased
+
+- **LoRAs** (2026-11-22): `cz_minimax_lora.py`, the app's own loader, as forward hooks on
+  the quantized DiT (nothing is merged, the weight slider re-scales live). Layouts read:
+  ComfyUI / ai-toolkit (`diffusion_model.blocks.N.attn.qkv_proj.lora_A`), kohya
+  (`lora_unet_blocks_N_attn_qkv_proj.lora_down` + `.alpha`), diffusers (separate
+  `to_q` / `to_k` / `to_v` placed on the fused qkv, feed-forward up matrix reordered).
+  Keys of no module (the audio stream of an H3 video LoRA) are counted and said;
+  DiffSynth files are refused by name. The LoRA section of the interface is back.
+  Tested on CPU against merged weights; not rendered on the card yet.
+- **onnxruntime-gpu pinned to 1.26.0** (2026-11-22), the last PyPI build for CUDA 12.8:
+  face / hand detection, Face Swap and Remove BG run on the card again.
+
 ## 0.1.0 (2026-11-14, crispz-minimax) : crispz-moss ported to MiniMax-H3-Image
 
 - **Engine `cz_minimax.py`**: the pruned (curve form) MiniMax-H3-Image transformer and
