@@ -51,10 +51,8 @@ faceswap/
 *.onnx
 *.bin
 
-# --- Local wildcards (the Fooocus set, ~218 files). ONLY wildcards/example.txt
-#     is versioned; the rest stays local. ---
-wildcards/*.txt
-!wildcards/example.txt
+# --- Local wildcards: the whole folder stays local, nothing in it is versioned. ---
+wildcards/*
 
 # --- Local presets (they reference your models). Only the example is versioned. ---
 presets/*.json
