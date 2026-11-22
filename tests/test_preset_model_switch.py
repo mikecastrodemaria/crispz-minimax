@@ -64,7 +64,7 @@ def _with_lib(fn):
     old = (P.CHECKPOINTS_DIR, P.CHECKPOINTS_EXTRA_DIR, P.BASE_REPO,
            P.ZIMAGE_TRANSFORMER, U._PRESETS_DIR, U._save_prefs_keys)
     P.CHECKPOINTS_DIR, P.CHECKPOINTS_EXTRA_DIR = TMP, ""
-    P.BASE_REPO = U.FLUX3_DISTILLED
+    P.BASE_REPO = U.ENGINE_DEFAULT_REPO
     P.ZIMAGE_TRANSFORMER = None
     U._PRESETS_DIR = os.path.join(TMP, "presets")
     saved = {}
@@ -98,7 +98,7 @@ def test_refusal_names_the_reason_and_the_studio_that_runs_the_file():
         # config file or the dropdown for a fix that does not exist
         assert P.CFG_MODEL_KEY not in why and "dropdown" not in why, why
         # an HF repo / diffusers folder does not go through that filter
-        assert P.checkpoint_refusal(U.FLUX3_BASE) is None
+        assert P.checkpoint_refusal(U.ENGINE_BASE_REPO) is None
         # a name that no longer exists on the disk must be said, not kept quiet
         gone = P.checkpoint_refusal("moved-away.safetensors")
         assert gone and "no such file" in gone, gone
@@ -116,7 +116,7 @@ def test_apply_checkpoint_refuses_a_single_file():
                              ("ideo.safetensors", "crispz-ideogram")):
             msg = U._apply_checkpoint(name)[0]
             assert not P.ZIMAGE_TRANSFORMER, f"{name} was applied"
-            assert P.BASE_REPO == U.FLUX3_DISTILLED
+            assert P.BASE_REPO == U.ENGINE_DEFAULT_REPO
             assert "NOT applied" in msg and needle in msg, msg
             assert P.BASE_REPO in msg, f"the message must say what stays in place: {msg}"
     _with_lib(check)
@@ -174,17 +174,17 @@ def test_a_preset_switches_its_own_base_repo():
     licence, the gated repo) follows the swap. Here from a mirror back to the official
     repo."""
     def check(saved):
-        _preset("zz-base", "", base=U.FLUX3_BASE)
+        _preset("zz-base", "", base=U.ENGINE_BASE_REPO)
         P.BASE_REPO = "someone/moss-image-mirror"
 
         outs = U._ui_preset_load("zz-base")
         status = outs[-1]
-        assert P.BASE_REPO == U.FLUX3_BASE, P.BASE_REPO
+        assert P.BASE_REPO == U.ENGINE_BASE_REPO, P.BASE_REPO
         assert "NOT switched" not in status, status
         assert "Base model switched" in status, status
         assert "next **Generate**" in status and "released" in status, status
         assert "Community License" in status, "the base repo's note must follow the swap"
-        assert saved.get(P.CFG_MODEL_KEY) == U.FLUX3_BASE, saved
+        assert saved.get(P.CFG_MODEL_KEY) == U.ENGINE_BASE_REPO, saved
     _with_lib(check)
 
 
@@ -218,10 +218,10 @@ def test_saving_records_the_base_repo():
         vals[U._PRESET_KEYS.index("checkpoint")] = "good3.safetensors"
         U._ui_preset_save("zz-saved", *(vals + ["None"] * U.MAX_LORA_SLOTS
                                         + [1.0] * U.MAX_LORA_SLOTS))
-        assert U._load_preset_file("zz-saved").get("base_repo") == U.FLUX3_DISTILLED
+        assert U._load_preset_file("zz-saved").get("base_repo") == U.ENGINE_DEFAULT_REPO
         # and an auto-created preset as well
         U._ensure_model_presets(["good3.safetensors"])
-        assert U._load_preset_file("good3").get("base_repo") == U.FLUX3_DISTILLED
+        assert U._load_preset_file("good3").get("base_repo") == U.ENGINE_DEFAULT_REPO
     _with_lib(check)
     print("OK test_saving_records_the_base_repo")
 
@@ -231,33 +231,33 @@ def test_choosing_a_base_repo_retries_its_dimension():
     licence is accepted left a None stuck there for the whole session. Choosing it counts
     as "retry"."""
     def check(_saved):
-        P._BASE_DIM_CACHE[U.FLUX3_BASE] = None     # a previous failure (403 gated)
-        P.set_zimage_model(U.FLUX3_BASE)
-        assert U.FLUX3_BASE not in P._BASE_DIM_CACHE, \
+        P._BASE_DIM_CACHE[U.ENGINE_BASE_REPO] = None     # a previous failure (403 gated)
+        P.set_zimage_model(U.ENGINE_BASE_REPO)
+        assert U.ENGINE_BASE_REPO not in P._BASE_DIM_CACHE, \
             "the cached failure must be purged when the repo is chosen again"
         # and a MOSS repo never needs the Hub for its width anyway: 3072
-        assert P._base_hidden_dim(U.FLUX3_BASE) == P.engine.HIDDEN_SIZE
-        P._BASE_DIM_CACHE.pop(U.FLUX3_BASE, None)
+        assert P._base_hidden_dim(U.ENGINE_BASE_REPO) == P.engine.HIDDEN_SIZE
+        P._BASE_DIM_CACHE.pop(U.ENGINE_BASE_REPO, None)
     _with_lib(check)
 
 
 def test_gated_repo_error_says_what_to_do():
     """A 401/403 from the Hub must become an instruction, not a trace. Both FLUX.3 repos
     are gated."""
-    hint = P._hf_access_hint(U.FLUX3_DISTILLED,
+    hint = P._hf_access_hint(U.ENGINE_DEFAULT_REPO,
                              RuntimeError("401 Client Error: Access to model ... is restricted"))
-    assert hint and U.FLUX3_DISTILLED in hint, hint
+    assert hint and U.ENGINE_DEFAULT_REPO in hint, hint
     assert "accept its licence" in hint and "token" in hint, hint
     # a token set by 'huggingface-cli login' counts: telling someone who has one
     # that there is "no token" sends them looking for the wrong cause.
     real, cz_core.hf_token_is_set = cz_core.hf_token_is_set, lambda: True
     try:
-        with_tok = P._hf_access_hint(U.FLUX3_BASE, RuntimeError("403 gated"))
+        with_tok = P._hf_access_hint(U.ENGINE_BASE_REPO, RuntimeError("403 gated"))
     finally:
         cz_core.hf_token_is_set = real
     assert "licence itself" in with_tok, with_tok
     # an ordinary failure must NOT be dressed up as a licence problem
-    assert P._hf_access_hint(U.FLUX3_BASE, OSError("disk full")) is None
+    assert P._hf_access_hint(U.ENGINE_BASE_REPO, OSError("disk full")) is None
     print("OK test_gated_repo_error_says_what_to_do")
 
 

@@ -117,8 +117,8 @@ PRESET_FLAGMAP = {
 }
 
 # The visible name of the multi-reference editing mode. "Omni" was crispz-qwen-edit's
-# vocabulary (the Qwen-Image-Edit "Omni" model); on FLUX.3 it is plain editing from
-# references cited as <ref_image_N>. The INTERNAL names stay (generate_omni, OMNI_MODEL,
+# vocabulary (the Qwen-Image-Edit "Omni" model); here it is plain editing from
+# references cited as <Picture N>. The INTERNAL names stay (generate_omni, OMNI_MODEL,
 # the 'omni' mode in the metadata, the protocol's op 'edit'): cz_cli, cz_protocol and the
 # other crispz apps import them. Only the words a user reads change (2026-10-28).
 EDIT_MODE = "Edit (references)"
@@ -174,11 +174,6 @@ ASPECT_RATIOS = {
 _LIVE_PREVIEW_POLL = 0.25
 
 # Fooocus-style Performance -> (gen_steps, guidance) for the loaded model.
-# FLUX.3: the distilled checkpoint is a 16-step flow map (BFL's recipe, no CFG); 8 steps is
-# a draft mode to be measured on the 5090; the undistilled -base checkpoint wants 50 steps
-# and a real CFG of 3.5 (model card). The same three live in config-sample.txt.
-# crispz-minimax: MiniMax-H3-Image's official 50 steps / CFG 3.0, and a draft; the same two live in
-# config-sample.txt (performance_presets wins when the config defines it).
 # crispz-minimax: ONE setting. The checkpoint is distilled to exactly 6 steps with one
 # output head per step and no CFG; anything else is refused by the model, so nothing
 # else is offered.
@@ -278,7 +273,7 @@ def _dl_path(pil, path):
 # Priority order for ESRGAN_DIR and BASE_REPO:
 #   1) the environment variable (ESRGAN_DIR / ZIMAGE_MODEL)
 #   2) preferences.json
-#   3) the default: ./upscale_models  and  black-forest-labs/FLUX.2-klein-4B
+#   3) the default: ./upscale_models  and  MiniMaxAI/MiniMax-H3-Image
 # ----------------------------------------------------------------------------
 import json  # noqa: F811 (utilise par _load_styles ci-dessous)
 
@@ -341,7 +336,7 @@ if _perf_note:
 
 
 # _load_prefs_raw / _save_prefs_keys / _is_single_file / _prefs -> cz_core.py.
-# The FLUX.2 Klein core -> cz_pipeline.py: the current model (BASE_REPO/ZIMAGE_TRANSFORMER),
+# The model core -> cz_pipeline.py: the current model (BASE_REPO/ZIMAGE_TRANSFORMER),
 # the checkpoints/loras folders, the active LoRAs, Omni, the pipe caches, the offload, the
 # guidance, stop/progress + generation/orchestration. app reads the state through
 # cz_pipeline.NAME and sets cz_pipeline._PROGRESS / cz_pipeline._STOP from the UI handlers.
@@ -394,7 +389,7 @@ def apply_preset_to_args(args, raw_argv):
 
 
 # ----------------------------------------------------------------------------
-# FLUX.2 Klein (diffusers, BF16) -> cz_pipeline.py: _ensure_base / get_pipe /
+# The pipeline (diffusers) -> cz_pipeline.py: _ensure_base / get_pipe /
 # generate / generate_omni / inpaint_run / outpaint / process_one / txt2img_run +
 # round_to_multiple / _reframe_canvas / _make_generator / _refine_* / _gen_meta.
 # (imported at the top). _editor_to_image_mask / _editor_img / _crop_input stay here
@@ -625,35 +620,27 @@ def _refresh_models(new_dir):
     return gr.update(choices=models, value=value), f"{len(models)} model(s) found in {cz_esrgan.ESRGAN_DIR}"
 
 
-# The official FLUX.3 Image Klein base repos, offered directly in the "FLUX.3 checkpoint"
-# dropdown: choosing a base repo = a COMPLETE swap (transformer + VAE + Qwen3-VL encoder).
-# crispz-klein's `klein_base_repos` and crispz-flux3's `flux3_base_repos` are NOT read:
-# their values are FLUX repos, which this build refuses anyway.
-# crispz-minimax: two official MiniMax-H3-Image checkpoints, SFT (the default) and Base. The two
-# FLUX3_* names stay (the selector code and merges from crispz-flux3 use them): 'Base'
-# maps to MOSS-Image-Base, 'Distilled' (the default) to the SFT. Config `minimax_base_repos`
-# can add mirrors or local folders.
+# The base repos offered in the checkpoint dropdown: choosing one = a COMPLETE swap
+# (transformer + VAE + text encoder). The `*_base_repos` keys of the other crispz apps
+# are NOT read: their values are repos of other models, which this build refuses anyway.
+# The engine names its repos (cz_minimax.ENGINE_REPOS); config `minimax_base_repos` can
+# add mirrors or local folders. The Distilled/Base selector further down is hidden: it
+# maps to the engine's two names.
 import cz_minimax as cz_engine
-FLUX3_DISTILLED = cz_engine.DEFAULT_REPO
-FLUX3_BASE = cz_engine.BASE_REPO
+ENGINE_DEFAULT_REPO = cz_engine.DEFAULT_REPO
+ENGINE_BASE_REPO = cz_engine.BASE_REPO
 ZIMAGE_BASE_REPOS = [r for r in (CONFIG.get("minimax_base_repos")
                                  or list(cz_engine.ENGINE_REPOS))
                      if isinstance(r, str) and r.strip()]
 # A base repo coming from the config/prefs must stay selectable even when it is absent
 # from the list: otherwise the dropdown shows one model while the pipeline uses another (and
-# choosing it would silently bring back the 4B).
+# choosing it would silently bring back the default).
 if cz_pipeline.BASE_REPO and cz_pipeline.BASE_REPO not in ZIMAGE_BASE_REPOS:
     ZIMAGE_BASE_REPOS.append(cz_pipeline.BASE_REPO)
 
 # What you need to know BEFORE launching a run on a base repo, not after 20 GB of
 # download: licence, access, VRAM. Shown on selection.
-_KOMMUNITY = ("**FLUX Kommunity License**: free, commercial use included, under 5 M USD of "
-              "yearly revenue (above that, a licence from BFL). The repo is **gated**: accept "
-              "the licence at https://huggingface.co/{repo} with your HF account, then set a "
-              "READ token (config `hf_token` or env HF_TOKEN). VRAM, BFL's figures to be "
-              "measured here: about 19 GB all-in in bf16, 14.4 in fp8r, 13.5 in nvfp4 "
-              "(the Precision selector); below that, set CPU offload to `model`.")
-_MOSS_NOTE = ("**MiniMax-H3-Image Community License**: rights are granted worldwide **except in "
+_LICENCE_NOTE = ("**MiniMax-H3-Image Community License**: rights are granted worldwide **except in "
               "the European Union, the United Kingdom, the Republic of Korea and the United "
               "States** (separate authorization: https://platform.minimax.io/license); a "
               "written authorization is also needed above 1 M USD of yearly revenue or for a "
@@ -663,11 +650,10 @@ _MOSS_NOTE = ("**MiniMax-H3-Image Community License**: rights are granted worldw
               "encoder are GGUF files (about 15.5 and 18.2 GB by default), which take the "
               "card in turn on a 32 GB GPU. 6 steps, no CFG, no negative prompt.")
 BASE_REPO_NOTES = {
-    cz_engine.DEFAULT_REPO: _MOSS_NOTE.format(repo=cz_engine.DEFAULT_REPO),
+    cz_engine.DEFAULT_REPO: _LICENCE_NOTE.format(repo=cz_engine.DEFAULT_REPO),
 }
 # The default Performance preset for each official base repo. Empty: profile_for_model()
-# decides from the name (flux-3-image-klein-base -> 50 / 3.5, flux-3-image-klein -> 16 /
-# 1.0, see cz_core) and _perf_update picks the matching preset. NB: do NOT put a preset
+# decides from the name (see cz_core) and _perf_update picks the matching preset. NB: do NOT put a preset
 # name here that does not exist in performance_presets -- _apply_checkpoint would ignore
 # it silently.
 ZIMAGE_BASE_PERFORMANCE = {}
@@ -794,12 +780,11 @@ def _sane_reco(reco, what="CivitAI consensus"):
 def _profile_for_checkpoint(path):
     """(steps, guidance, reason) for this checkpoint.
 
-    The FILE name does not say everything: an undistilled build is called
-    'kleinForeskinFullCheckpoint_v19Final' like the others, so profile_for_model() sees
-    "klein" in it and answers 4 steps / CFG 1.0 -- the regime of a distilled model, which
-    renders that one as mush. The CivitAI name, on the other hand, says it in black and
-    white ("undistilled - use with Turbo Lora") and we have it on the disk already, in the
-    sidecar downloaded with the preview. So it is read.
+    The FILE name does not say everything: a community build can carry the name of a
+    distilled model and be undistilled, and the distilled regime renders that one as
+    mush. The CivitAI name, on the other hand, says it in black and white
+    ("undistilled") and we have it on the disk already, in the sidecar downloaded with
+    the preview. So it is read.
 """
     base = os.path.basename(path)
     try:
@@ -810,10 +795,8 @@ def _profile_for_checkpoint(path):
     reco = civ.get("recommended") or {}
     name = civ.get("modelName") or ""
     # 1. The community consensus, when it has been fetched. It beats the substring
-    #    profile, which knows nothing about THIS model: on this machine it asks for
-    #    10 steps for rayKlein, 8 for kleinFinalcut, 5 for unstableRevolution -- where
-    #    "klein" imposed 4 on everyone. No network access here: the sidecar already on the
-    #    disk is read, selecting a model has to stay instant.
+    #    profile, which knows nothing about THIS file. No network access here: the
+    #    sidecar already on the disk is read, selecting a model has to stay instant.
     r_st, r_g = _sane_reco(reco)
     if r_st is not None or r_g is not None:
         d_st, d_g = profile_for_model(base)
@@ -823,8 +806,7 @@ def _profile_for_checkpoint(path):
                        f"{reco.get('n', '?')} community image(s), the sampler is not "
                        f"applied here, use _Apply CivitAI recommended settings_ for that.")
     # 2. No consensus, but the page says the model is NOT distilled: by its name, by the
-    #    CivitAI base-model label ("Flux.3 Klein-base" on the INT8 of 2026-10-28), or by
-    #    the file's own tensors (no flow-map embedder = the base checkpoint).
+    #    CivitAI base-model label (it ends in "-base"), or by the file's own tensors.
     base_label = str(civ.get("baseModel") or "").lower()
     file_variant = None
     try:
@@ -835,24 +817,11 @@ def _profile_for_checkpoint(path):
         preset, st, g = _undistilled_profile()
         if preset:
             why = ("its CivitAI page calls it **undistilled**" if "undistil" in name.lower()
-                   else "CivitAI labels it **Flux.3 Klein-base**" if base_label.endswith("-base")
-                   else "its tensors carry no flow-map embedder: it is the **base** checkpoint")
-            return st, g, (f" {why[:1].upper() + why[1:]}, so the distilled profile (16 "
+                   else f"CivitAI labels it **{civ.get('baseModel')}**" if base_label.endswith("-base")
+                   else "its tensors are those of an undistilled **base** checkpoint")
+            return st, g, (f" {why[:1].upper() + why[1:]}, so the distilled profile (6 "
                            f"steps, no CFG) would leave it unfinished: applied _{preset}_ "
                            f"instead.")
-    # 2b. The FILE NAME of the official undistilled release ('flux-3-image-klein-base',
-    #     and crispz-klein's 'flux-2-klein-base-4b' in a shared library). An official file
-    #     = no CivitAI page, so no sidecar. Kept from crispz-klein, where the distilled
-    #     profile left such a file unfinished (the 2026-09-10 bench: sharpness 572 on the
-    #     scene, against 971 for the distilled base at the same settings); here the
-    #     cz_core profile already knows '-base', this is the belt to its braces.
-    import re
-    if re.search(r"klein[-_. ]?base|base[-_. ]?(?:4|9)b", base.lower()):
-        preset, st, g = _undistilled_profile()
-        if preset:
-            return st, g, (f" The file name says **klein-base**: the undistilled release, "
-                           f"which the distilled profile (16 steps, no CFG) leaves "
-                           f"unfinished: applied _{preset}_ instead.")
     # 3. Nothing known: the file-name profile, as before.
     st, g = profile_for_model(base)
     return st, g, ""
@@ -894,8 +863,8 @@ def _ui_set_text_encoder(src):
 
 def _te_hint():
     """Why a downloaded encoder does not show up: it is of another size than the current
-    base repo's (caught on 2026-09-10: two Qwen3-4B downloaded, klein 9B loaded, the list
-    reduced to "Default" without a word)."""
+    base repo's (seen in another crispz app: two encoders downloaded for one model,
+    another model loaded, the list reduced to "Default" without a word)."""
     try:
         other, width = cz_pipeline.cached_text_encoder_mismatches()
     except Exception:
@@ -918,8 +887,8 @@ def _ui_refresh_text_encoders():
 
 
 def _ckpt_choices():
-    """What the 'FLUX.3 checkpoint' menu offers, under the Distilled/Base selector: the
-    current base repo on its own line, then the single-file FLUX.3 checkpoints, each
+    """What the checkpoint menu offers, under the Distilled/Base selector: the
+    current base repo on its own line, then the single-file checkpoints, each
     carrying its family, its size and its format.
 
     The OTHER official repo is NOT here -- the selector is what switches it. Having both
@@ -943,7 +912,7 @@ def _apply_variant(v):
     """The Distilled/Base selector: the same complete base swap that picking the repo in
     the menu used to do -- transformer, VAE and text encoder all change. Already on that
     checkpoint -> nothing moves, so clicking the current one never costs a reload."""
-    repo = FLUX3_BASE if str(v).strip().lower().startswith("base") else FLUX3_DISTILLED
+    repo = ENGINE_BASE_REPO if str(v).strip().lower().startswith("base") else ENGINE_DEFAULT_REPO
     if repo == cz_pipeline.BASE_REPO:
         # The selector is hidden on crispz-minimax (the repo dropdown does the same swap).
         return (gr.update(),) * 6
@@ -976,7 +945,7 @@ def _ui_set_precision(p):
 
 
 def _apply_checkpoint(name):
-    """Selects either an official FLUX.3 base repo (a complete BASE_REPO swap), or a
+    """Selects either an official base repo (a complete BASE_REPO swap), or a
     local single-file checkpoint (a transformer override, with the VAE/encoder from the base
     repo). Also adjusts steps/guidance AND the Performance preset according to the model's
     profile.
@@ -1041,7 +1010,7 @@ def _ui_civitai_reco(name, progress=gr.Progress()):
     """Applies the CivitAI community settings to the current model (the consensus of the
     example images' 'meta': steps/CFG by median, the sampler by majority). Fetches the
     civitai.json sidecar when it is missing (with progress: hashing a 12 GB checkpoint with
-    no cache can take several minutes on a HDD). The sampler is never applied on FLUX.3
+    no cache can take several minutes on a HDD). The sampler is never applied here
     (Euler is the model's own schedule): only steps/CFG are."""
     import cz_civitai
     _noop = (gr.update(), gr.update(), gr.update(), gr.update())
@@ -1095,7 +1064,7 @@ def _apply_transformer_repo(repo):
     Adjusts steps/guidance AND the Performance preset according to the model's profile.
     An EMPTY field = a no-op: nothing is reset (otherwise this button would erase the
     checkpoint chosen just above). To go back to the pure base repo, pick an official repo
-    in 'FLUX.3 checkpoint'."""
+    in the checkpoint menu."""
     repo = (repo or "").strip()
     if not repo:
         return ("Transformer override is empty, no change. Pick a model in the "
@@ -1395,32 +1364,30 @@ def _ui_kw_to_prompt(prompt_text, keywords):
     return gr.update(value=base + kw)
 
 
-def _klein_base_prefixes():
+def _civitai_base_prefixes():
     """(the family prefix, the current variant prefix), normalised, for ranking the CivitAI
     candidates.
 
-    CivitAI labels these LoRAs 'Flux.2 Klein 4B-base' (read from a real sidecar), so the
-    exact comparison the single-base forks use would match nothing -> a PREFIX match on the
-    normalised label. The VARIANT matters here, unlike on those forks: a 4B LoRA does not
-    load on a 9B base, cz_pipeline refuses it with its reason. The variant is only used to
-    ORDER and to filter on request; reading it must never break a search, hence the except.
+    CivitAI's labels carry suffixes (a variant, "-base"), so an exact comparison would
+    miss them -> a PREFIX match on the normalised label. One model, one variant here:
+    the two prefixes are the same constant, and no network access is needed.
     """
     # One family: CivitAI labels the base model "MiniMax H3 Image" (read on 2026-11-22).
     fam = cz_civitai._norm_base("MiniMax H3 Image")
     return fam, fam
 
 
-def _ui_civitai_lora_search(query, klein_only):
+def _ui_civitai_lora_search(query, family_only):
     """Searches CivitAI for a LoRA by name. Returns (the field, the candidates, the state,
     the status): the state carries the candidate dicts (label -> candidate) for the
     Download button. The candidates of the CURRENT variant come first, then the other
-    Klein ones, then the rest."""
+    ones of the family, then the rest."""
     q = (query or "").strip()
     if not q:
         return (gr.update(), gr.update(choices=[], value=None), {},
                 "Type a LoRA name to search on CivitAI.")
     cands = cz_civitai.search_loras(q, limit=10)
-    fam, cur = _klein_base_prefixes()
+    fam, cur = _civitai_base_prefixes()
 
     def _rank(c):
         b = cz_civitai._norm_base(c.get("baseModel"))
@@ -1429,12 +1396,12 @@ def _ui_civitai_lora_search(query, klein_only):
         return 1 if b.startswith(fam) else 2
 
     cands.sort(key=_rank)                        # stable: CivitAI's own order is kept
-    if klein_only:
+    if family_only:
         cands = [c for c in cands
                  if cz_civitai._norm_base(c.get("baseModel")).startswith(fam)]
     if not cands:
         hint = (" with a MiniMax H3 Image base, untick 'H3 only' to see the other bases "
-                "(they will not load here)." if klein_only else
+                "(they will not load here)." if family_only else
                 ". Check the spelling, or the model may not be on CivitAI.")
         return (gr.update(value=q), gr.update(choices=[], value=None), {},
                 f"No CivitAI result for **{q}**{hint}")
@@ -1494,7 +1461,7 @@ def _save_hf_token(token):
                              if hf_token_is_set() else "Enter a Hugging Face token to save.")
     set_hf_token(token)
     return gr.update(value=""), ("✅ HF token saved (preferences.json, gitignored) and applied. "
-                                 "Gated downloads (e.g. FLUX.1-Krea-dev) will now authenticate.")
+                                 "Gated downloads will now authenticate.")
 
 
 def _save_civitai_key(token):
@@ -1515,7 +1482,7 @@ def _save_civitai_key(token):
 def _save_paths_to_prefs(esrgan_dir, checkpoints_dir=None, checkpoints_extra_dir=None,
                          loras_dir=None, wildcards_dir=None):
     """Persists the paths in preferences.json (local) -> loaded on the next boot.
-    The current klein base repo (chosen through the dropdown) is persisted as it is."""
+    The current base repo (chosen through the dropdown) is persisted as it is."""
     set_esrgan_dir(esrgan_dir)
     if checkpoints_dir:
         set_checkpoints_dir(checkpoints_dir)
@@ -1578,8 +1545,8 @@ _PERF_LORA_SAID = set()
 
 def _performance_lora(name):
     """(slot_name, path, weight) of the LoRA a Performance preset carries, or (None,
-    None, None). A third element that names a draft preset of cz_edit_loras (e.g.
-    'moss-dmd-8-steps') is fetched from the hub ONCE when it is not in a LoRA folder,
+    None, None). A third element that names a draft preset of cz_edit_loras (none
+    is declared for this model) is fetched from the hub ONCE when it is not in a LoRA folder,
     its licence said the first time; any other value is a file of the LoRA folders.
     Raises when a draft LoRA cannot be fetched (the preset makes no sense without it)."""
     import cz_edit_loras
@@ -1946,7 +1913,7 @@ def _ui_edit(mode, editor_value, dirs, ratio, fit, auto_describe, harmonize, har
     image (the editor), the prompt, the `steps` (the model's) and `strength` are shared.
       - Brush       : inpaints the painted area (inpaint_run)
       - Expand sides: a directional L/R/T/B outpaint (outpaint_directions)
-      - Expand sides (outpaint LoRA): the same sides, through the FLUX.3 Outpaint LoRA on
+      - Expand sides (outpaint LoRA): the same sides, through an outpaint LoRA on
         a gray canvas (outpaint_lora); `lora_weight` is its strength (1.5 advised)
       - Reframe     : a crop to the ratio, ~1 MP, Contain/Cover (reframe)
     auto_describe (outpaint/reframe): describes the central image through local BLIP (no
@@ -2192,7 +2159,7 @@ def _ui_gallery_open(output_dir):
     except Exception as e:
         return f"Gallery open failed: {e}", ""
     # The LoRAs / Models catalogue (Asset Browser tabs), built in the background; the
-    # Characters / Styles tabs too, when the MOSS catalog is cached and they are stale.
+    # Characters / Styles tabs too, when the character catalog is cached and they are stale.
     def _build():
         ab_build_catalog(output_dir, cz_pipeline._lora_dirs(), cz_pipeline._checkpoint_dirs())
     try:
@@ -4236,8 +4203,8 @@ def _ui_preset_save(name, *vals):
     data = {k: v for k, v in zip(_PRESET_KEYS, scalars)}
     data["loras"] = [[dds[i], float(lws[i])] for i in range(half)
                      if dds[i] and dds[i] not in ("None", "none", "")]
-    # Not a UI scalar: the base repo has no component of its own (the 'Klein
-    # checkpoint' dropdown serves both). So it is read off the pipeline, which is the
+    # Not a UI scalar: the base repo has no component of its own (the
+    # checkpoint dropdown serves both). So it is read off the pipeline, which is the
     # authority.
     data["base_repo"] = cz_pipeline.BASE_REPO
     try:
@@ -4305,8 +4272,8 @@ def _preset_ckpt_refusal(ckpt, data):
     except Exception:
         pass
     if fam == "flux2":
-        # No base of THIS build loads it: the width (3072) would otherwise point at the
-        # FLUX.3 distilled repo, a wrong direction said with confidence.
+        # No base of THIS build loads it: say where it runs instead of pointing at a
+        # base repo of this app, a wrong direction said with confidence.
         action = ("**This preset names a FLUX.2 Klein checkpoint, which runs in "
                   "crispz-klein, not here: pick a MiniMax-H3-Image model above, then hit "
                   "_Update selected_ to repair the preset.**")
@@ -4463,9 +4430,8 @@ def build_ui():
             _sample_urls[n] = "/gradio_api/file=" + os.path.abspath(p).replace("\\", "/")
     js_full = CZ_JS.replace("__MAP__", json.dumps(_sample_urls))
     # Omni (multi-reference) is only offered when an Omni/Edit model is configured.
-    # crispz-minimax (lot 4b): reference editing runs in the base pipeline through the
-    # Moss-Image-Edit LoRA (cz_protocol.OMNI_SUPPORTED). The tab is shown whether the
-    # LoRA is on disk or not: the first Edit fetches it and says so.
+    # crispz-minimax: reference editing is native, in the base pipeline
+    # (cz_protocol.OMNI_SUPPORTED): no second model, no LoRA.
     import cz_protocol as _czproto
     omni_on = _czproto.OMNI_SUPPORTED and bool((cz_pipeline.OMNI_MODEL or "").strip())
 
@@ -4587,7 +4553,7 @@ def build_ui():
                                                     elem_id="cz_improve_neg_dir")
                 # The layout editor (presets, magic prompt, Describe,
                 # boxes drawn with the mouse). Wired further down, once width/height exist.
-                # crispz-minimax: MOSS-Image's layout language does not exist on this model.
+                # crispz-minimax: the JSON layout language of the sibling app does not exist on this model.
                 # The panel is built hidden so that its wiring stays valid.
                 import cz_caption_ui
                 with gr.Group(visible=False):
@@ -4689,7 +4655,7 @@ def build_ui():
                     input_mode = gr.Radio(
                         ["Upscale / img2img"] + ([EDIT_MODE] if omni_on else []),
                         value="Upscale / img2img", label="Input mode", visible=omni_on,
-                        info="Edit (references) = MOSS-Image edits Ref 1 of the Edit tab from the instruction in the prompt (the Moss-Image-Edit LoRA; up to 3 more references, named in plain words)")
+                        info="Edit (references) = the model edits the references of the Edit tab from the instruction in the prompt; cite them as <Picture 1>, <Picture 2>, in the order given")
                     with gr.Tabs():
                         with gr.Tab("Upscale or img2img"):
                             gr.Markdown("*MiniMax-H3-Image has no native img2img or inpaint: crispz-minimax EMULATES them (SDEdit on the tail of its own schedule; latent blending under the mask). Denoise = the fraction of the steps that runs.*")
@@ -4781,9 +4747,8 @@ def build_ui():
                         with gr.Tab("Edit in crispz-flux3", visible=False):
                             import cz_handoff
                             _ho_ok, _ho_why = cz_handoff.status()
-                            gr.Markdown("*Native multi-reference editing (MiniMax-H3-Image edits "
-                                        "only through the Moss-Image-Edit LoRA, Edit "
-                                        "(references) tab). This sends the image and the "
+                            gr.Markdown("*Editing in another app (MiniMax-H3-Image edits natively, "
+                                        "Edit (references) tab). This sends the image and the "
                                         "instruction to **crispz-flux3** on this machine "
                                         "(protocol v1): through its app when it runs, "
                                         "otherwise in its own process after crispz-minimax "
@@ -4810,7 +4775,7 @@ def build_ui():
 
                         with gr.Tab("Compare in crispz-ideogram", visible=False):
                             _cmp_ok, _cmp_why = cz_handoff.status_of(cz_handoff.IDEOGRAM)
-                            gr.Markdown("*An A/B on demand: the **main prompt** (a MOSS layout "
+                            gr.Markdown("*An A/B on demand: the **main prompt** (a JSON layout "
                                         "is translated to the Ideogram 4 caption schema, same "
                                         "boxes, same size, same seed) is rendered by "
                                         "**crispz-ideogram** on this machine (protocol v1): "
@@ -4868,8 +4833,8 @@ def build_ui():
                                         "**Reframe** = new aspect ratio. Steps follow the model "
                                         "(Performance). Describe the result in the prompt.*")
                             edit_mode = gr.Radio(
-                                # "Expand sides (outpaint LoRA)" is FLUX.3's Outpaint LoRA:
-                                # the LoRA family guard refuses it on MiniMax-H3-Image, so the
+                                # "Expand sides (outpaint LoRA)" needs an outpaint LoRA of another
+                                # model: the family guard refuses it on MiniMax-H3-Image, so the
                                 # mode is not offered (its handler stays, for merges).
                                 ["Brush (inpaint)", "Expand sides (outpaint)",
                                  "Reframe (ratio)"],
@@ -4889,10 +4854,8 @@ def build_ui():
                             with gr.Group(visible=False) as outpaint_lora_group:
                                 outpaint_lora_w = gr.Slider(
                                     0.5, 2.0, value=1.5, step=0.05, label="Outpaint LoRA weight",
-                                    info="CivitAI 'FLUX 3 Image Klein Outpaint LoRA' (153 MB, "
-                                         "downloaded on first use into the LoRA folder). The "
-                                         "author advises 1.5 on the distilled checkpoint; lower "
-                                         "values leave gray patches. Painted areas are redone too.")
+                                    info="Not offered on MiniMax-H3-Image: no outpaint LoRA exists "
+                                         "for this model. The field is kept for the presets.")
                             with gr.Group(visible=False) as reframe_group:
                                 with gr.Row():
                                     reframe_ratio = gr.Dropdown(
@@ -4955,8 +4918,8 @@ def build_ui():
                                     ref3 = _crop_input("Ref 3", 220)
                                 with gr.Column(min_width=300):
                                     ref4 = _crop_input("Ref 4", 220)
-                            # Edit presets: an EMPTY catalogue on klein (the
-                            # "Qwen-Image-Edit fast lazy load" LoRAs): applied on the EDIT
+                            # Edit presets: an EMPTY catalogue on this model (the row is
+                            # hidden; elsewhere, edit LoRAs): applied on the EDIT
                             # pipe only, downloaded on the first selection. An ON/OFF box in
                             # Models > LoRA.
                             with gr.Row(elem_classes="cz-omni-controls", equal_height=False, visible=False):
@@ -4965,10 +4928,8 @@ def build_ui():
                                         choices=_edit_lora_choices(), value="None",
                                         label="Edit LoRA presets",
                                         info="✓ = on disk, ⬇ = fetched from Hugging Face on first "
-                                             "use. Moss-Image-Edit is applied to every edit even "
-                                             "when 'None' is picked (the reference prefix needs "
-                                             "it); pick it here to set its weight, or declare "
-                                             "another edit LoRA in config `edit_loras`. No trigger "
+                                             "use. MiniMax-H3-Image edits without any LoRA; declare "
+                                             "an edit LoRA in config `edit_loras`. No trigger "
                                              "word: describe the edit.")
                                     with gr.Row():
                                         edit_lora_prompt_btn = gr.Button("Use example prompt", size="sm")
@@ -4980,12 +4941,12 @@ def build_ui():
                                                             label="Edit LoRA weight",
                                                             elem_classes="cz-lora-weight")
                                     edit_lora_status = gr.Markdown("", elem_classes="cz-omni-status")
-                            # The fast edit mode. MOOT on klein: the model is already
-                            # distilled to 4 steps with no CFG, and there exists no FLUX.2
-                            # Lightning LoRA to stack -> edit_speed_choices() is empty and
+                            # The fast edit mode. MOOT here: the model is already
+                            # distilled to 6 steps with no CFG, and there exists no
+                            # acceleration LoRA to stack -> edit_speed_choices() is empty and
                             # the whole row is HIDDEN (the way krea2 hides what it cannot
                             # do). The components are built but invisible: the handlers stay
-                            # wired, nothing to rewire should a FLUX.2 acceleration LoRA
+                            # wired, nothing to rewire should an acceleration LoRA
                             # appear one day.
                             # 'Off' is always offered: the row is only of interest when
                             # there is SOMETHING ELSE than 'Off' to choose.
@@ -5094,14 +5055,8 @@ def build_ui():
                                                # outside choices is refused by the frontend.
                                                value=_valid_performance(CONFIG.get("default_performance")),
                                                label="Performance",
-                                               info="Sets steps and guidance. MOSS = the official "
-                                                    "50 steps at CFG 3.0. Draft = fewer steps, a quick "
-                                                    "look (the texts hold, details may move). The LoRA "
-                                                    "presets fetch their adapter once (Apache 2.0) into "
-                                                    "LoRA slot 1 and run at CFG 1; Turbo was trained at "
-                                                    "1024x1024: above that the steps are raised at "
-                                                    "render time (6 around 1536, 8 at 2048), said in "
-                                                    "the log.")
+                                               info="One setting: MiniMax-H3-Image is distilled to exactly "
+                                                    "6 steps with no CFG.")
                         aspect = gr.Dropdown(list(ASPECT_RATIOS),
                                              value=(CONFIG.get("default_aspect_ratio")
                                                     if CONFIG.get("default_aspect_ratio") in ASPECT_RATIOS
@@ -5137,13 +5092,10 @@ def build_ui():
                         with gr.Row():
                             guidance = gr.Slider(*GUIDANCE_BOUNDS, value=1.0, visible=False,
                                                  step=0.5, label="CFG guidance", scale=2,
-                                                 info="Classifier-free guidance (MiniMax-H3-Image: 3.0 "
-                                                      "official, 3 to 6 advised; 1.0 = no negative "
-                                                      "branch, twice as fast).")
-                            # FLUX.3 runs its own FlowMatch Euler schedule (constant shift
-                            # 6.93); the distilled checkpoint is a flow map that is told the
-                            # next timestep at every step, so another sampler or a remapped
-                            # schedule breaks it. The two menus stay (presets, XYZ, the CLI
+                                                 info="Not used on MiniMax-H3-Image: the model runs "
+                                                      "without CFG (kept for the presets).")
+                            # The model runs its own 6-step schedule, one output head per
+                            # step, so another sampler or a remapped schedule breaks it. The two menus stay (presets, XYZ, the CLI
                             # and metadata read them) but are greyed out, and cz_pipeline
                             # ignores any other value with a log line.
                             sampler_dd = gr.Dropdown(
@@ -5182,7 +5134,7 @@ def build_ui():
                         gr.Markdown("*Hover a style to preview it.*")
                         styles = gr.CheckboxGroup(list(STYLES), value=CONFIG.get("default_styles", []),
                                                   label="Styles (combinable)", elem_id="cz_styles")
-                        with gr.Accordion("Character catalog (MOSS-Image)", open=False, visible=False):
+                        with gr.Accordion("Character catalog", open=False, visible=False):
                             gr.Markdown(
                                 "The MiniMax-H3-Image Character Catalog (hide1 on Hugging Face): 33,935 "
                                 "characters and 314 styles rendered with MiniMax-H3-Image, each with a "
@@ -5325,12 +5277,9 @@ def build_ui():
                                 with gr.Row():
                                     variant_rb = gr.Radio(
                                         list(VARIANT_CHOICES), value=_variant_of_repo(),
-                                        label="FLUX.3 checkpoint", scale=2, visible=False,
-                                        info="A complete base swap, same licence and same "
-                                             "weight. Distilled: 16 steps, no CFG, the "
-                                             "default. Base: undistilled, about 50 steps "
-                                             "with a real CFG and a working negative prompt, "
-                                             "three times slower.")
+                                        label="Checkpoint variant", scale=2, visible=False,
+                                        info="Hidden: MiniMax-H3-Image has one checkpoint, "
+                                             "distilled to 6 steps with no CFG.")
                                     precision_rb = gr.Radio(
                                         list(cz_engine.PRECISIONS), value=cz_pipeline.PRECISION,
                                         label="Text encoder precision", scale=2,
@@ -5484,7 +5433,7 @@ def build_ui():
                         with gr.Accordion("\U0001F5BC️ Edit model (multi-reference)", open=False,
                                           visible=False):   # editing is native: nothing to choose
                             gr.Markdown("*The Edit (references) tab is served by the BASE model itself: "
-                                        "FLUX.3 takes a list of reference images (cited as `<ref_image_N>` "
+                                        "it takes a list of reference images (cited as `<Picture N>` "
                                         "in the prompt), so multi-reference "
                                         "editing needs no second model and no extra VRAM. Changing the "
                                         "checkpoint changes the editor too - the field below is kept for "
@@ -5503,7 +5452,7 @@ def build_ui():
                             omni_model_tb = gr.Dropdown(
                                 choices=_omni_choices, value=_omni_cur or None,
                                 allow_custom_value=True,
-                                label="Edit model (the base model itself on FLUX.3; field kept for the family)",
+                                label="Edit model (the base model itself here; field kept for the family)",
                                 info="Local edit checkpoints (*edit*, *aio*, *rapid*) from the checkpoints "
                                      "folders + HF repos. Type any other repo/path. Applied on the next "
                                      "edit (no restart, except to reveal the tab the first time).")
@@ -5552,7 +5501,7 @@ def build_ui():
                         gr.Markdown("### Hugging Face access (gated models)")
                         hf_token_tb = gr.Textbox(
                             value="", type="password", label="HF token",
-                            placeholder="hf_... (for gated models, e.g. FLUX.1-Krea-dev)",
+                            placeholder="hf_... (for gated models)",
                             info="Saved to preferences.json (gitignored) and applied immediately. "
                                  "Leave empty to keep the current token.")
                         hf_token_save_btn = gr.Button("Save token", size="sm", variant="primary")

@@ -66,7 +66,7 @@ class _Api:
 
 
 class _Variant:
-    """Forces what _klein_base_prefixes() reads as the loaded variant."""
+    """Forces what _civitai_base_prefixes() reads as the loaded variant."""
 
     def __init__(self, name):
         self.name = name
@@ -137,7 +137,7 @@ def test_moss_only_drops_the_other_families_flux_included():
 
 def test_the_family_prefix_needs_no_hub_access():
     """One family, so the prefix is a constant: no network, nothing to degrade."""
-    fam, cur = cz_ui._klein_base_prefixes()
+    fam, cur = cz_ui._civitai_base_prefixes()
     assert fam == cur == "minimaxh3image", (fam, cur)
 
 
