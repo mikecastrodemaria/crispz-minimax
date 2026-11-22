@@ -1,6 +1,7 @@
-"""crispz-moss - the layout editor of the Generate tab (lot 2).
+"""crispz-minimax - the JSON layout editor of the Generate tab, built HIDDEN here.
 
-A form for MOSS-Image's layout (summary caption, meta tags, canvas, palette, items), a
+MiniMax-H3-Image has no layout language: the panel comes from a sibling crispz app and
+is kept, invisible, so that its wiring stays valid. A form for a JSON layout (summary caption, meta tags, canvas, palette, items), a
 board where each item's box is drawn with the mouse at the canvas ratio, the design
 presets, the magic prompt, a raw-JSON mode, and "Use as prompt" which puts the layout
 DRAFT (cz_caption: pixel boxes, the canvas written in) in the main prompt box. The
@@ -214,8 +215,8 @@ def parse_bridge(value):
 def build_panel():
     """The components, created where it is called (inside the Generate column)."""
     p = {}
-    with gr.Accordion("MOSS layout (JSON): presets, magic prompt, boxes", open=False):
-        gr.Markdown("A layout tells MOSS-Image the scene, every visible text VERBATIM and "
+    with gr.Accordion("JSON layout: presets, magic prompt, boxes", open=False):
+        gr.Markdown("A layout tells the model the scene, every visible text VERBATIM and "
                     "where each thing goes; the model then renders those texts and nothing "
                     "else (in plain text it may add words it infers from the brief). "
                     "**Use as prompt** puts the layout in the prompt box and sets the size "
@@ -228,9 +229,9 @@ def build_panel():
             engines = [(cz_magic.ENGINE_LABELS[e], e) for e in cz_magic.visible_engines()]
             p["engine"] = gr.Radio(engines, value=cz_magic.engine(), label="Magic prompt engine",
                                    info="Both engines run on this machine: nothing leaves. "
-                                        "Ollama needs a local model; Local reuses the "
-                                        "loaded Qwen3.5-9B (its LM head, ~2 GB, downloaded "
-                                        "once).", scale=3)
+                                        "Ollama needs a local model; Local is not available "
+                                        "on MiniMax-H3-Image (its text encoder ships "
+                                        "without a language head).", scale=3)
             p["magic_btn"] = gr.Button("Magic prompt: idea -> layout", variant="primary",
                                        scale=1)
         with gr.Accordion("Describe an image -> layout", open=False):
@@ -242,9 +243,8 @@ def build_panel():
                                 "visible text verbatim, and a box per element. Follows the "
                                 "engine above: Ollama uses a model with the vision "
                                 "capability (the magic prompt's model if it has it, else "
-                                "the first one installed; seconds), Local uses the loaded "
-                                "Qwen3.5-9B with its LM head (about a minute, ~2 GB "
-                                "downloaded once). Nothing leaves the machine.")
+                                "the first one installed; seconds). Local is not available "
+                                "on MiniMax-H3-Image. Nothing leaves the machine.")
                     p["describe_btn"] = gr.Button("Describe -> layout", variant="primary")
         p["caption"] = gr.Textbox(label="Summary caption (the whole image: subject, medium, "
                                         "style, lighting, palette, mood)", lines=3)
